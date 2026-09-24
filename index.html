@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babyz Pizza — Revenue &amp; Order Tracker</title>
+<meta name="description" content="Babyz Pizza cloud kitchen — Swiggy &amp; offline order tracking, revenue and profit analytics.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍕</text></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-inner">
+    <div class="brand">
+      <div class="brand-mark">🍕</div>
+      <div class="brand-text">
+        <h1>Babyz Pizza</h1>
+        <p>A little slice of happiness</p>
+      </div>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-right">
+      <div class="header-note" id="headerNote"></div>
+      <button class="btn btn-ghost btn-sm" id="reloadBtn" title="Re-read the data file">↻ Reload data</button>
+      <span class="mode-badge" id="modeBadge"><span class="dot"></span><span id="modeText">Loading…</span></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="swiggy"><span class="tab-ico">🛵</span> Swiggy</button>
+    <button class="tab" data-tab="offline"><span class="tab-ico">🏪</span> Offline</button>
+    <button class="tab" data-tab="money"><span class="tab-ico">💰</span> Money Earned</button>
+    <button class="tab" data-tab="menu"><span class="tab-ico">📋</span> Menus</button>
+  </nav>
+
+  <div id="modeBanner"></div>
+
+  <!-- ================================================== SWIGGY ============ -->
+  <section class="panel active" id="panel-swiggy">
+    <div class="section-head swiggy">
+      <h2>Swiggy — orders, payouts &amp; revenue</h2>
+      <span class="sub">Online channel · revenue is taken directly from weekly Swiggy payouts</span>
+    </div>
+
+    <div class="kpi-grid" id="kpiSwiggy"></div>
+
+    <div class="filters" id="swFilters">
+      <div class="field"><label for="swFrom">From date</label><input type="date" id="swFrom"></div>
+      <div class="field"><label for="swTo">To date</label><input type="date" id="swTo"></div>
+      <div class="field"><label for="swItem">Menu item</label><select id="swItem"><option value="">All items</option></select></div>
+      <div class="field"><label for="swCat">Type</label>
+        <select id="swCat">
+          <option value="">Veg + Non-Veg + Combos</option>
+          <option value="veg">Veg only</option>
+          <option value="nonveg">Non-Veg only</option>
+          <option value="combo">Combos only</option>
+        </select>
+      </div>
+      <div class="field" style="min-width:190px"><label for="swQ">Search customer / item</label><input type="search" id="swQ" placeholder="e.g. Penguin, combo…"></div>
+      <div class="filter-actions"><button class="btn btn-ghost btn-sm" id="swReset">Clear filters</button></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="card"><div class="card-head"><h3>Weekly gross sales vs payout received</h3><span class="hint">the gap is Swiggy's commission + discounts</span></div><div class="chart-box"><canvas id="swWeekChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Deduction % per week</h3><span class="hint">(gross − payout) ÷ gross</span></div><div class="chart-box"><canvas id="swDeductChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Daily gross sales</h3><span class="hint">customer-paid value per day</span></div><div class="chart-box"><canvas id="swDailyChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Most popular items</h3><span class="hint">units sold on Swiggy</span></div><div class="chart-box"><canvas id="swItemsChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Veg vs Non-Veg vs Combos</h3><span class="hint">share of Swiggy gross sales</span></div><div class="chart-box"><canvas id="swCatChart"></canvas></div></div>
+    </div>
+
+    <div class="section-head swiggy"><h2>Swiggy master table</h2><span class="sub">every online order</span></div>
+    <div class="add-panel readonly-hide" id="swAddPanel">
+      <h4>➕ Add a Swiggy order</h4>
+      <div class="add-grid">
+        <div class="field"><label for="swDateAdd">Date</label><input type="date" id="swDateAdd"></div>
+        <div class="field"><label for="swCustomerAdd">Customer</label><input type="text" id="swCustomerAdd" placeholder="Random"></div>
+        <div class="field span2"><label for="swItemAdd">Menu item</label><select id="swItemAdd"></select></div>
+        <div class="field"><label for="swPriceAdd">Selling price (₹)</label><input type="number" id="swPriceAdd" min="0" step="1" placeholder="0"></div>
+        <div class="field"><label for="swQtyAdd">Qty</label><input type="number" id="swQtyAdd" min="1" step="1" value="1"></div>
+        <div class="field"><label for="swNoteAdd">Note</label><input type="text" id="swNoteAdd" placeholder="optional"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="swAddBtn">Add order</button></div>
+      </div>
+      <div class="field" style="margin-top:8px"><span class="hintline">Picking an item auto-fills the menu price — you can still type the exact amount Swiggy charged.</span></div>
+    </div>
+    <div class="card tight">
+      <div class="card-head"><h3>Swiggy orders</h3><span class="hint" id="swTableCount"></span><span class="spacer"></span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th class="num">#</th><th>Date</th><th>Customer</th><th>Item</th><th>Type</th>
+            <th class="num">Selling price</th><th class="num">Qty</th><th class="num">Gross</th><th>Payout week</th>
+            <th class="actions readonly-hide">Actions</th>
+          </tr></thead>
+          <tbody id="swTableBody"></tbody>
+          <tfoot id="swTableFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-head swiggy"><h2>Weekly payouts &amp; deductions</h2><span class="sub">pick the start day of the week — the end date is worked out for you</span></div>
+    <div class="add-panel readonly-hide" id="swPayoutAddPanel">
+      <h4>➕ Add a weekly payout</h4>
+      <div class="add-grid">
+        <div class="field"><label for="swpStart">Week start day</label><input type="date" id="swpStart" min="2026-09-01"></div>
+        <div class="field"><label>Week ends (auto)</label><div class="computed" id="swpEnd">Pick a start day</div></div>
+        <div class="field"><label for="swpAmount">Payout received (₹)</label><input type="number" id="swpAmount" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label for="swpReceived">Received on</label><input type="date" id="swpReceived"></div>
+        <div class="field span2"><label for="swpNote">Note</label><input type="text" id="swpNote" placeholder="optional"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="swpAddBtn">Add payout</button></div>
+      </div>
+      <div class="field" style="margin-top:8px"><span class="hintline">Weeks run from the start day you pick. Every week is 7 days — except the first one, <b>1–5 Sep 2026</b>, which is the short week. Dates before 1 Sep 2026 are disabled. If your range overlaps a week you already recorded, the two are <b>merged into a single payout</b>.</span></div>
+    </div>
+    <div class="card tight">
+      <div class="card-head"><h3>Weekly payouts</h3><span class="hint">deduction is calculated against the selling prices recorded for that week</span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Week</th><th>Window</th><th class="num">Orders</th><th class="num">Gross sales</th>
+            <th class="num">Payout received</th><th class="num">Deducted</th><th class="num">Deducted %</th>
+            <th>Received on</th><th>Note</th><th class="actions readonly-hide">Actions</th>
+          </tr></thead>
+          <tbody id="swPayoutBody"></tbody>
+          <tfoot id="swPayoutFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================== OFFLINE =========== -->
+  <section class="panel" id="panel-offline">
+    <div class="section-head offline">
+      <h2>Offline — orders, revenue &amp; profit</h2>
+      <span class="sub">Walk-in / direct channel · approx. cost of making each pizza is configurable (default ₹80)</span>
+    </div>
+
+    <div class="kpi-grid" id="kpiOffline"></div>
+
+    <div class="filters" id="ofFilters">
+      <div class="field"><label for="ofFrom">From date</label><input type="date" id="ofFrom"></div>
+      <div class="field"><label for="ofTo">To date</label><input type="date" id="ofTo"></div>
+      <div class="field"><label for="ofItem">Menu item</label><select id="ofItem"><option value="">All items</option></select></div>
+      <div class="field"><label for="ofCat">Type</label>
+        <select id="ofCat">
+          <option value="">Veg + Non-Veg + Combos</option>
+          <option value="veg">Veg only</option>
+          <option value="nonveg">Non-Veg only</option>
+          <option value="combo">Combos only</option>
+        </select>
+      </div>
+      <div class="field" style="min-width:190px"><label for="ofQ">Search customer / item</label><input type="search" id="ofQ" placeholder="e.g. Penguin, pepperoni…"></div>
+      <div class="filter-actions"><button class="btn btn-ghost btn-sm" id="ofReset">Clear filters</button></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="card"><div class="card-head"><h3>Daily revenue &amp; profit</h3><span class="hint">final amount after offers, minus approx. food cost</span></div><div class="chart-box"><canvas id="ofDayChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Weekly revenue</h3><span class="hint">Sunday → Saturday</span></div><div class="chart-box"><canvas id="ofWeekChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Most popular items</h3><span class="hint">units sold offline</span></div><div class="chart-box"><canvas id="ofItemsChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Veg vs Non-Veg vs Combos</h3><span class="hint">share of offline revenue</span></div><div class="chart-box"><canvas id="ofCatChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Cumulative revenue</h3><span class="hint">running total over time</span></div><div class="chart-box"><canvas id="ofCumChart"></canvas></div></div>
+    </div>
+
+    <div class="section-head offline"><h2>Offline master table</h2><span class="sub">every direct order</span></div>
+    <div class="add-panel readonly-hide" id="ofAddPanel">
+      <h4>➕ Add an offline order</h4>
+      <div class="add-grid">
+        <div class="field"><label for="ofDateAdd">Date</label><input type="date" id="ofDateAdd"></div>
+        <div class="field"><label for="ofCustomerAdd">Customer</label><input type="text" id="ofCustomerAdd" placeholder="Walk-in"></div>
+        <div class="field span2"><label for="ofItemAdd">Menu item</label><select id="ofItemAdd"></select></div>
+        <div class="field"><label for="ofRateAdd">Rate (₹)</label><input type="number" id="ofRateAdd" min="0" step="1" placeholder="0"></div>
+        <div class="field"><label for="ofQtyAdd">Qty</label><input type="number" id="ofQtyAdd" min="1" step="1" value="1"></div>
+        <div class="field"><label for="ofOfferAdd">Offer amount (₹)</label><input type="number" id="ofOfferAdd" min="0" step="1" value="0"></div>
+        <div class="field"><label for="ofNoteAdd">Note</label><input type="text" id="ofNoteAdd" placeholder="optional"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="ofAddBtn">Add order</button></div>
+      </div>
+    </div>
+    <div class="card tight">
+      <div class="card-head"><h3>Offline orders</h3><span class="hint" id="ofTableCount"></span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th class="num">#</th><th>Date</th><th>Customer</th><th>Item</th><th>Type</th>
+            <th class="num">Rate</th><th class="num">Qty</th><th class="num">Amount</th>
+            <th class="num">Offer</th><th class="num">Final</th><th class="num">Food cost</th><th class="num">Profit</th>
+            <th class="actions readonly-hide">Actions</th>
+          </tr></thead>
+          <tbody id="ofTableBody"></tbody>
+          <tfoot id="ofTableFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================== MONEY ============= -->
+  <section class="panel" id="panel-money">
+    <div class="section-head money">
+      <h2>Money earned — combined</h2>
+      <span class="sub">both channels together, plus everything invested so far</span>
+    </div>
+
+    <div class="kpi-grid" id="kpiMoney"></div>
+
+    <div class="chart-grid">
+      <div class="card"><div class="card-head"><h3>Revenue by channel over time</h3><span class="hint">offline revenue vs Swiggy payouts — weeks follow your recorded payout ranges</span></div><div class="chart-box"><canvas id="mnChannelChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Revenue share</h3><span class="hint">where the money came from</span></div><div class="chart-box"><canvas id="mnShareChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Investment vs revenue</h3><span class="hint">cumulative outflow against cumulative inflow</span></div><div class="chart-box tall"><canvas id="mnCumChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Profit / loss by channel</h3><span class="hint">revenue − approx. food cost</span></div><div class="chart-box"><canvas id="mnProfitChart"></canvas></div></div>
+      <div class="card"><div class="card-head"><h3>Investment by category</h3><span class="hint">what the money went into</span></div><div class="chart-box"><canvas id="mnInvChart"></canvas></div></div>
+    </div>
+
+    <div class="section-head money"><h2>Revenue settings</h2><span class="sub">used for approx. cost and profit estimates</span></div>
+    <div class="card">
+      <div class="add-grid">
+        <div class="field readonly-hide"><label for="costPerPizza">Cost of making one pizza (₹)</label><input type="number" id="costPerPizza" min="0" step="1"></div>
+        <div class="field readonly-hide"><label for="applyCostSwiggy">Swiggy food cost</label>
+          <select id="applyCostSwiggy">
+            <option value="no">Ignore (payout is net revenue)</option>
+            <option value="yes">Subtract ₹cost × qty too</option>
+          </select>
+        </div>
+        <div class="field readonly-hide"><label>&nbsp;</label><button class="btn btn-primary" id="saveSettingsBtn">Save settings</button></div>
+      </div>
+      <div class="field" style="margin-top:8px"><span class="hintline">Swiggy revenue is the weekly payout amount you record — commission and discounts are already deducted by Swiggy.</span></div>
+    </div>
+
+    <div class="section-head money"><h2>Invested amounts</h2><span class="sub">purchases, packaging, licences, marketing…</span></div>
+    <div class="add-panel readonly-hide" id="invAddPanel">
+      <h4>➕ Add an investment / purchase</h4>
+      <div class="add-grid">
+        <div class="field"><label for="invDateAdd">Date</label><input type="date" id="invDateAdd"></div>
+        <div class="field span2"><label for="invItemAdd">Item</label><input type="text" id="invItemAdd" placeholder="e.g. Mozzarella"></div>
+        <div class="field"><label for="invQtyAdd">Qty</label><input type="number" id="invQtyAdd" min="0" step="0.5" value="1"></div>
+        <div class="field"><label for="invRateAdd">Rate (₹)</label><input type="number" id="invRateAdd" min="0" step="1" placeholder="0"></div>
+        <div class="field"><label for="invCatAdd">Category</label>
+          <select id="invCatAdd">
+            <option value="purchase">Purchase / ingredient</option>
+            <option value="packaging">Packaging</option>
+            <option value="equipment">Equipment</option>
+            <option value="marketing">Marketing / influencer</option>
+            <option value="prelaunch">Pre-launch / licence</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="invAddBtn">Add investment</button></div>
+      </div>
+    </div>
+    <div class="card tight">
+      <div class="card-head"><h3>Investments &amp; purchases</h3><span class="hint" id="invTableCount"></span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th class="num">#</th><th>Date</th><th>Item</th><th>Category</th>
+            <th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th>
+            <th class="actions readonly-hide">Actions</th>
+          </tr></thead>
+          <tbody id="invTableBody"></tbody>
+          <tfoot id="invTableFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================== MENUS ============= -->
+  <section class="panel" id="panel-menu">
+    <div class="section-head"><h2>Menu reference</h2><span class="sub">exactly as listed on each channel</span></div>
+    <div class="legend card tight" style="margin-bottom:16px">
+      <span><i class="vd g"></i> Veg</span>
+      <span><i class="vd r"></i> Non-Veg</span>
+      <span><i class="vd c"></i> Combo</span>
+      <span>Offline prices are the in-store menu; Swiggy prices are the online listing.</span>
+    </div>
+    <div class="menu-grid">
+      <div class="card">
+        <div class="card-head"><h3>🏪 Offline menu</h3><span class="hint">in-store / direct</span></div>
+        <div class="add-panel readonly-hide" id="menuAddPanel-offline">
+          <h4>➕ Add a menu item</h4>
+          <div class="add-grid">
+            <div class="field span2"><label for="menuName-offline">Item name</label><input type="text" id="menuName-offline" placeholder="e.g. Farmhouse Pizza" autocomplete="off"></div>
+            <div class="field"><label for="menuPrice-offline">Price (₹)</label><input type="number" id="menuPrice-offline" min="0" step="1" placeholder="0"></div>
+            <div class="field"><label for="menuGroup-offline">Group</label><select id="menuGroup-offline"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option><option value="combo">Combo</option><option value="legacy">Legacy (off the menu)</option></select></div>
+            <div class="field" id="menuLegacyCatField-offline" hidden><label for="menuLegacyCat-offline">Kept as</label><select id="menuLegacyCat-offline"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option><option value="combo">Combo</option></select></div>
+            <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="menuAddBtn-offline">Add item</button></div>
+          </div>
+          <div class="field" style="margin-top:8px"><span class="hintline">Every add, delete and move asks for confirmation first, then saves to all 3 files and refreshes the dropdowns, tables and charts. <b>Move → Legacy</b> keeps an item selectable for old orders without listing it on the menu.</span></div>
+        </div>
+        <div id="menuOffline"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>🛵 Swiggy menu</h3><span class="hint">online listing</span></div>
+        <div class="add-panel readonly-hide" id="menuAddPanel-swiggy">
+          <h4>➕ Add a menu item</h4>
+          <div class="add-grid">
+            <div class="field span2"><label for="menuName-swiggy">Item name</label><input type="text" id="menuName-swiggy" placeholder="e.g. Farmhouse Pizza" autocomplete="off"></div>
+            <div class="field"><label for="menuPrice-swiggy">Price (₹)</label><input type="number" id="menuPrice-swiggy" min="0" step="1" placeholder="0"></div>
+            <div class="field"><label for="menuGroup-swiggy">Group</label><select id="menuGroup-swiggy"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option><option value="combo">Combo</option><option value="legacy">Legacy (off the menu)</option></select></div>
+            <div class="field" id="menuLegacyCatField-swiggy" hidden><label for="menuLegacyCat-swiggy">Kept as</label><select id="menuLegacyCat-swiggy"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option><option value="combo">Combo</option></select></div>
+            <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="menuAddBtn-swiggy">Add item</button></div>
+          </div>
+        </div>
+        <div id="menuSwiggy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================== CREDIT ============ -->
+  <section class="credit-section">
+    <div class="credit-card">
+      <div class="credit-mark">🍕</div>
+      <div class="credit-text">
+        <span class="credit-label">Created by</span>
+        <span class="credit-name">Rounak Adhikary</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="app-footer">
+  <div id="footerNote"></div>
+</footer>
+
+<!-- ===================== staged-deletion control bar ===================== -->
+<div class="pending-bar readonly-hide" id="pendingBar" hidden>
+  <div class="pending-inner">
+    <span class="pending-ico">🗂️</span>
+    <div class="pending-text">
+      <b id="pendingTitle">0 rows staged for deletion</b>
+      <span id="pendingSub">Removed from the 2nd local copy only — the main local file is untouched until you confirm.</span>
+    </div>
+    <div class="pending-actions">
+      <button class="btn btn-ghost" id="undoDeleteBtn" title="Restore from the main local file">↩ Undo deletes</button>
+      <button class="btn btn-confirm" id="confirmDeleteBtn">✅ Confirm delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== confirm popup ===================== -->
+<div class="modal-backdrop" id="modalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-icon" id="modalIcon">🗑️</div>
+    <h3 id="modalTitle">Are you sure?</h3>
+    <p id="modalMsg"></p>
+    <div class="modal-detail" id="modalDetail"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modalCancel">Cancel</button>
+      <button class="btn btn-primary" id="modalOk">Yes, delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-host"></div>
+
+<script src="data/babyz-data.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

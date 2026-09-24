@@ -1,0 +1,18 @@
+# --- local-only artifacts (never publish these) ---
+local-data/
+*.tmp
+data/*.tmp
+
+# --- Excel lock files ---
+~$*.xlsx
+
+# --- editor / OS noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+node_modules/
+.shots/
+
+# NOTE: data/babyz-data.js is intentionally NOT ignored.
+# It is the published data copy that the hosted site reads.
