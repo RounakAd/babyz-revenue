@@ -436,6 +436,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.mono { font-variant-numeric: tabular-nums; }
 td.actions { text-align: right; }
 
+/* the invoice button lives in the same cell as Delete, but it is not an
+   editing control \u2014 only the Delete button carries .readonly-hide */
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.row-actions .btn { flex: 0 0 auto; }
+
+/* the little "optional" tag inside a form label */
+.field label .opt {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .6px;
+  color: var(--orange-600);
+  background: var(--orange-50);
+  border: 1px solid var(--orange-100);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+
 .empty {
   padding: 34px 16px;
   text-align: center;
@@ -760,6 +778,65 @@ body.has-pending #toast-host { bottom: 116px; }
 }
 .btn-solid-danger:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
+/* ---------------------------------------------------------------- invoice */
+.invoice-backdrop { z-index: 210; align-items: flex-start; overflow: auto; }
+
+.invoice-modal {
+  width: 100%;
+  max-width: 900px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 20px;
+  padding: 16px 16px 18px;
+  box-shadow: 0 30px 70px rgba(27, 26, 25, .32);
+  animation: pop .2s cubic-bezier(.2, .9, .3, 1.3);
+}
+
+.invoice-top { display: flex; align-items: center; gap: 10px; }
+.invoice-ico { font-size: 22px; line-height: 1; }
+.invoice-top h3 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-stage {
+  background:
+    repeating-linear-gradient(45deg, #f6f2ee 0 10px, #f1ece6 10px 20px);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-height: 68vh;
+  overflow: auto;
+}
+
+#invoiceCanvas {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(68vh - 26px);
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 10px 26px rgba(27, 26, 25, .2);
+}
+
+.invoice-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.invoice-actions .hintline { font-size: 11px; color: var(--ink-400); }
+.invoice-actions .spacer { flex: 1 1 auto; }
+
 @media (max-width: 720px) {
   .wrap { padding: 16px 13px 60px; }
   .app-header-inner { padding: 13px 15px; }
@@ -772,4 +849,10 @@ body.has-pending #toast-host { bottom: 116px; }
   .credit-name { font-size: 18px; }
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions .btn { width: 100%; }
+  .invoice-stage { max-height: 54vh; }
+  #invoiceCanvas { max-height: calc(54vh - 26px); }
+  .invoice-actions .hintline { display: none; }
+  .invoice-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .row-actions { gap: 5px; }
+  .row-actions .btn { padding: 4px 8px; font-size: 11.5px; }
 }

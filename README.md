@@ -94,8 +94,8 @@ you'll see a warning banner. Start `start-local.bat` to switch back to real file
 
 | Tab | Contents |
 |---|---|
-| **🛵 Swiggy** | KPIs, weekly gross-vs-payout chart, deduction %, daily sales, item popularity, veg/non-veg/combo split, master order table, weekly payout table |
-| **🏪 Offline** | KPIs, daily & weekly revenue, profit, item popularity, category split, cumulative revenue, master order table |
+| **🛵 Swiggy** | KPIs, weekly gross-vs-payout chart, deduction %, daily sales, item popularity, veg/non-veg/combo split, master order table (with order numbers + per-order invoices), weekly payout table |
+| **🏪 Offline** | KPIs, daily & weekly revenue, profit, item popularity, category split, cumulative revenue, master order table (with per-order invoices) |
 | **💰 Money Earned** | combined revenue, investment tracking, cumulative investment-vs-revenue, profit by channel, investment by category, ₹/pizza cost setting |
 | **📋 Menus** | the offline and Swiggy menus, grouped into Veg / Non-Veg / Combo / Legacy — add, delete and move items right here |
 
@@ -219,6 +219,61 @@ offline orders have no payout cycle to follow.
 
 ---
 
+## Order numbers & invoices
+
+### Optional order number (Swiggy orders, local only)
+
+When you record a Swiggy order there is an **Order no.** field next to the date. It is
+**optional** — leave it blank and nothing changes. When you do use it:
+
+* it accepts **letters and digits**, plus `-` and `/` (so `8823-AB`, `AB/7` and
+  `1234567890-1234567` all work),
+* spaces and every other symbol are refused with a toast, and the row is **not** added,
+* up to 32 characters,
+* it is stored on the row as `orderNo`, written to all three data files like any other
+  field, shown in the Swiggy master table **Order no.** column, and searchable from the
+  *Search customer / item* box (type an order number and the table filters to it).
+
+Orders recorded without one show `—` in that column. The field lives in the add panel,
+which is hidden on the hosted copy, so this is a local-only input by construction.
+
+### Invoice per order — PDF and PNG
+
+Every row of the **Swiggy** and **Offline** master tables has a **🧾 Invoice** button.
+It opens a preview of a one-page A4 invoice built from that order's own data, with two
+downloads:
+
+| Button | What you get |
+|---|---|
+| **⬇ Download PDF** | `Babyz-Pizza-Invoice-<ref>.pdf` — the invoice on a single A4 page |
+| **⬇ Download PNG** | `Babyz-Pizza-Invoice-<ref>.png` — the same invoice as an image |
+
+`<ref>` is the order number you typed, or the row id when there isn't one, so an invoice
+files itself next to the order it belongs to.
+
+The invoice carries every detail of the order: bill ref / order no., date, customer,
+channel, type, quantity, the item with its unit price and line amount, subtotal, discount
+(when an offer was given), the total paid and the note. It opens with the **Babyz Pizza
+logo** (see *The invoice logo* under **Files**) over the typeset business name and location,
+and closes with the thank-you line and a **Code 39 barcode** of the reference, like the
+receipt it is modelled on.
+
+The Swiggy payout week is **not** printed on the invoice — it is a weekly settlement
+figure, not something that belongs on a single customer's bill. It stays where it is
+useful, in the Swiggy tab's payout week badge and the weekly payout table.
+
+**It is not an editing control.** The button reads the row it already has, writes nothing
+and needs no file access, so it stays available on the **hosted, read-only copy** — only
+*Delete* is hidden there. Nothing is fetched from a CDN either: the invoice is drawn
+straight onto a `<canvas>` (at 2× for print), the PNG is that canvas, and the PDF is
+assembled byte by byte in `assets/app.js` (`pdfFromCanvas`) around the same JPEG. So it
+behaves identically on GitHub Pages, on `localhost` and on `file://`.
+
+Approx. food cost and profit are deliberately **not** printed — they are internal numbers
+from the Money Earned tab, not something an invoice handed to a customer should carry.
+
+---
+
 ## Source data
 
 Seeded from `Babyz Financials.xlsx`:
@@ -238,14 +293,46 @@ nothing is lost and nothing is mixed up between channels.
 ## Files
 
 ```
-index.html              the app
-assets/styles.css       theme (white / orange, deep green + red accents)
-assets/app.js           all logic: data, filters, charts, tables, staged deletion
-vendor/chart.umd.min.js Chart.js (bundled, works offline)
-data/babyz-data.js      ▶ the repo copy — commit this
-server.js               local writer (zero dependencies)
-start-local.bat         Windows launcher
+index.html                  the app
+assets/styles.css           theme (white / orange, deep green + red accents)
+assets/app.js               all logic: data, filters, charts, tables, staged deletion, invoices
+assets/logo.js              the invoice logo, embedded as a base64 data URI (generated)
+vendor/chart.umd.min.js     Chart.js (bundled, works offline)
+data/babyz-data.js          ▶ the repo copy — commit this
+server.js                   local writer (zero dependencies)
+start-local.bat             Windows launcher
+tools/make-logo.js          rebuilds assets/logo.js from a source PNG (zero dependencies)
 ```
+
+### The invoice logo
+
+The invoice prints the Babyz Pizza logo from `assets/logo.js`, which holds it as a
+**base64 data URI** rather than pointing at a `.png` file. That is deliberate:
+
+* the invoice is drawn on a `<canvas>`, and the PNG/PDF downloads read that canvas
+  back with `toDataURL()`;
+* in Chrome and Edge a page opened from disk (`file://`) treats a linked image as
+  cross-origin, which would **taint** the canvas and make every download fail with
+  *"Tainted canvases may not be exported"*;
+* a data URI is treated as same-origin, so the canvas stays clean on `file://`,
+  on `localhost` and on GitHub Pages alike — and nothing extra is fetched.
+
+Because a data URI ships with the page, the artwork is downscaled first: the
+1254×1254 source becomes a 384×384 greyscale PNG (54 KB) and that becomes a 72 KB
+URI. It is also loaded **lazily** — the dashboard does not fetch it at all; it
+arrives the first time you open an invoice (and if the file is missing, the invoice
+quietly falls back to the drawn mark instead of breaking).
+
+**To change the logo**, drop the new image in the project folder and run:
+
+```bash
+node tools/make-logo.js my-new-logo.png        # 384 px, the default
+node tools/make-logo.js my-new-logo.png 512    # or any edge size you want
+```
+
+The tool is zero-dependency — its own PNG decoder, area-average resampler,
+greyscale detector and encoder, using Node's `zlib` for compression. It prints the
+size it produced so you can trade sharpness against page weight.
 
 ### Custom paths
 

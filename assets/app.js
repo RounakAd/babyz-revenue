@@ -536,7 +536,8 @@
         ' \u00B7 ' + inr((+row.rate || 0) * (+row.qty || 0) - (+row.offerAmount || 0));
     }
     if (collection === 'swiggyOrders') {
-      return (row.item || '') + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
+      return (row.orderNo ? '#' + row.orderNo + ' \u00B7 ' : '') +
+        (row.item || '') + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
         ' \u00B7 ' + inr((+row.sellingPrice || 0) * (+row.qty || 0));
     }
     if (collection === 'swiggyPayouts') {
@@ -719,7 +720,8 @@
     if (f.cat && row.category !== f.cat) return false;
     if (f.item && row.item !== f.item) return false;
     if (f.q) {
-      var hay = ((row.customer || '') + ' ' + (row.item || '') + ' ' + (row.sourceItem || '') + ' ' + (row.note || '')).toLowerCase();
+      var hay = ((row.customer || '') + ' ' + (row.item || '') + ' ' + (row.sourceItem || '') +
+        ' ' + (row.orderNo || '') + ' ' + (row.note || '')).toLowerCase();
       if (hay.indexOf(f.q.toLowerCase()) < 0) return false;
     }
     return true;
@@ -906,6 +908,18 @@
   }
 
   /* ------------------------------------------------------------ tables */
+  /* one row's controls: the invoice is available everywhere (the hosted copy
+     included \u2014 it only reads the row), the delete button only ever appears
+     on a page that is allowed to write */
+  function actionsCell(collection, id) {
+    return '<div class="row-actions">' +
+      '<button class="btn btn-ghost btn-sm" data-invoice="' + esc(collection) + '" data-id="' + esc(id) +
+        '" title="Preview this order as an invoice and download it as PDF or PNG">\uD83E\uDDFE Invoice</button>' +
+      '<button class="btn btn-danger readonly-hide" data-del="' + esc(collection) + '" data-id="' + esc(id) +
+        '">Delete</button>' +
+      '</div>';
+  }
+
   function catBadge(cat) {
     var cls = cat === 'veg' ? 'veg' : cat === 'nonveg' ? 'nonveg' : cat === 'combo' ? 'combo' : 'muted';
     var dot = cat === 'veg' ? '<i class="vd g"></i>' : cat === 'nonveg' ? '<i class="vd r"></i>' : cat === 'combo' ? '<i class="vd c"></i>' : '';
@@ -923,13 +937,14 @@
     var rows = filteredSwiggy().slice().sort(function (a, b) { return (a.date || '') < (b.date || '') ? -1 : 1; });
     var body = $('swTableBody'), foot = $('swTableFoot');
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="10"><div class="empty"><span class="big">\uD83D\uDEF5</span>No Swiggy orders match the current filters.</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="11"><div class="empty"><span class="big">\uD83D\uDEF5</span>No Swiggy orders match the current filters.</div></td></tr>';
       foot.innerHTML = '';
     } else {
       body.innerHTML = rows.map(function (r, i) {
         return '<tr>' +
           '<td class="num mono">' + (i + 1) + '</td>' +
           '<td class="mono">' + dNice(r.date) + '</td>' +
+          '<td class="mono">' + (r.orderNo ? esc(r.orderNo) : '<span class="sub">\u2014</span>') + '</td>' +
           '<td>' + esc(r.customer || '\u2014') + '</td>' +
           '<td>' + esc(r.item) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
@@ -941,10 +956,10 @@
               (r.weekSource === 'payout' ? 'Recorded payout week' : 'From the 7-day grid \u2014 no payout recorded for this week yet') +
               '">' + esc(periodLabel(r.week)) + '</span>'
             : '<span class="badge muted" title="Before 1 Sep 2026 \u2014 payout weeks start here">\u2014</span>') + '</td>' +
-          '<td class="actions readonly-hide"><button class="btn btn-danger" data-del="swiggyOrders" data-id="' + esc(r.id) + '">Delete</button></td>' +
+          '<td class="actions">' + actionsCell('swiggyOrders', r.id) + '</td>' +
           '</tr>';
       }).join('');
-      foot.innerHTML = '<tr><td colspan="5">Total \u00B7 ' + nf(rows.length) + ' orders</td>' +
+      foot.innerHTML = '<tr><td colspan="6">Total \u00B7 ' + nf(rows.length) + ' orders</td>' +
         '<td class="num">\u2014</td><td class="num mono">' + nf(sum(rows, function (r) { return r.qty; })) + '</td>' +
         '<td class="num mono">' + inr(sum(rows, function (r) { return r.gross; })) + '</td>' +
         '<td colspan="2"></td></tr>';
@@ -1010,7 +1025,7 @@
           '<td class="num mono"><b>' + inr(r.final) + '</b></td>' +
           '<td class="num mono">' + nf(r.cost) + '</td>' +
           '<td class="num mono ' + (r.profit >= 0 ? 'pos' : 'neg') + '">' + nf(r.profit) + '</td>' +
-          '<td class="actions readonly-hide"><button class="btn btn-danger" data-del="offlineOrders" data-id="' + esc(r.id) + '">Delete</button></td>' +
+          '<td class="actions">' + actionsCell('offlineOrders', r.id) + '</td>' +
           '</tr>';
       }).join('');
       foot.innerHTML = '<tr><td colspan="6">Total \u00B7 ' + nf(rows.length) + ' orders</td>' +
@@ -1739,6 +1754,579 @@
     });
   }
 
+  /* ============================================================ order no. ==
+     An OPTIONAL, alphanumeric reference you type when recording a Swiggy
+     order (order IDs, ticket numbers, whatever the app shows you). It is
+     stored on the row as `orderNo`, shown in the master table and printed on
+     the invoice. Letters, digits, "-" and "/" only \u2014 no spaces. */
+  function normalizeOrderNo(raw) {
+    var s = String(raw === undefined || raw === null ? '' : raw).trim().replace(/\s+/g, '');
+    if (!s) return { ok: true, value: '' };                       /* optional */
+    if (s.length > 32) s = s.slice(0, 32);
+    if (!/^[A-Za-z0-9][A-Za-z0-9\-\/]*$/.test(s)) return { ok: false, value: s };
+    return { ok: true, value: s };
+  }
+
+  /* ============================================================== invoices ==
+     Every order \u2014 Swiggy or offline \u2014 can be turned into a printed invoice.
+     The invoice is drawn on a <canvas> (2x for print), the preview shows that
+     canvas, and the download buttons give you
+       \u2022 PNG  \u2014 the canvas as an image, and
+       \u2022 PDF  \u2014 the same image placed on a single A4 page.
+     Nothing here talks to the network and nothing is read from the writer, so
+     it behaves identically on the hosted site and on a local copy. It also
+     never writes data \u2014 which is why the button is NOT a .readonly-hide
+     control and stays available in live mode. */
+
+  var A4 = { w: 595.28, h: 841.89 };          /* A4 portrait, in points       */
+  var INV_SCALE = 2;                          /* canvas pixels per point      */
+  var INV_FONT = '"Segoe UI", Inter, Arial, Helvetica, sans-serif';
+  var INV_INK = '#1b1a19', INV_SOFT = '#6b6560', INV_FAINT = '#8c857e';
+  var INV_LINE = '#cfc8c0', INV_BORDER = '#e6e0da', INV_TINT = '#fff7ef', INV_ORANGE = '#f26100';
+  var INV_PAD = 40, INV_INNER = 22;
+
+  var invoiceTarget = null;                   /* {kind, row, model} */
+
+  /* ------------------------------------------------------------- the logo
+     `assets/logo.js` carries the Babyz Pizza logo as a base64 data URI
+     (built by tools/make-logo.js). It is EMBEDDED rather than linked for one
+     concrete reason: a file:// image drawn onto a canvas taints it, and a
+     tainted canvas cannot be exported \u2014 so on a double-clicked index.html
+     every PNG and PDF download would fail. A data URI is same-origin, so the
+     canvas stays clean everywhere.
+
+     It is also loaded LAZILY \u2014 the dashboard never pays for it, it arrives
+     the first time an invoice is opened, and if it is missing the invoice
+     falls back to the drawn mark instead of breaking. */
+  var logoState = { status: 'idle', img: null, waiters: [] };
+
+  function withInvoiceLogo(cb) {
+    if (logoState.status === 'done') { cb(logoState.img); return; }
+    logoState.waiters.push(cb);
+    if (logoState.status === 'loading') return;
+    logoState.status = 'loading';
+
+    function finish(img) {
+      logoState.status = 'done';
+      logoState.img = img;
+      var queued = logoState.waiters.slice();
+      logoState.waiters.length = 0;
+      queued.forEach(function (fn) { fn(img); });
+    }
+
+    function decode() {
+      var src = typeof window.BABYZ_LOGO === 'string' ? window.BABYZ_LOGO : '';
+      if (!src) { finish(null); return; }
+      var img = new Image();
+      img.onload = function () { finish(img); };
+      img.onerror = function () { finish(null); };
+      img.src = src;
+    }
+
+    if (typeof window.BABYZ_LOGO === 'string') { decode(); return; }
+
+    var tag = document.createElement('script');
+    tag.src = 'assets/logo.js';
+    tag.onload = decode;
+    tag.onerror = function () {
+      console.warn('babyz: assets/logo.js did not load \u2014 invoices will use the drawn mark. Run `node tools/make-logo.js` to rebuild it.');
+      finish(null);
+    };
+    document.head.appendChild(tag);
+  }
+
+  /* -------------------------------------------------- canvas text helpers */
+  function invFont(size, weight) { return (weight || 400) + ' ' + size + 'px ' + INV_FONT; }
+
+  function invWidth(ctx, s, size, weight) {
+    ctx.font = invFont(size, weight);
+    return ctx.measureText(String(s)).width;
+  }
+
+  /* canvas has no letter-spacing everywhere yet, so wide-tracked labels are
+     drawn one glyph at a time \u2014 that also keeps them centred exactly */
+  function invSpaced(ctx, s, x, y, spacing, align) {
+    var i, total = 0, cx;
+    ctx.textAlign = 'left';
+    for (i = 0; i < s.length; i++) total += ctx.measureText(s[i]).width + (i ? spacing : 0);
+    cx = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+    for (i = 0; i < s.length; i++) {
+      ctx.fillText(s[i], cx, y);
+      cx += ctx.measureText(s[i]).width + spacing;
+    }
+  }
+
+  /* o = { size, weight, color, align, spacing, upper } */
+  function invText(ctx, s, x, y, o) {
+    o = o || {};
+    var text = String(s === undefined || s === null ? '' : s);
+    if (o.upper) text = text.toUpperCase();
+    ctx.font = invFont(o.size || 11, o.weight || 400);
+    ctx.fillStyle = o.color || INV_INK;
+    ctx.textBaseline = 'alphabetic';
+    if (o.spacing) { invSpaced(ctx, text, x, y, o.spacing, o.align || 'left'); return; }
+    ctx.textAlign = o.align || 'left';
+    ctx.fillText(text, x, y);
+    ctx.textAlign = 'left';
+  }
+
+  function invClip(ctx, s, maxW, size, weight) {
+    var t = String(s === undefined || s === null ? '' : s);
+    if (invWidth(ctx, t, size, weight) <= maxW) return t;
+    while (t.length > 1 && invWidth(ctx, t + '\u2026', size, weight) > maxW) t = t.slice(0, -1);
+    return t + '\u2026';
+  }
+
+  function invWrap(ctx, s, maxW, size, weight, maxLines) {
+    ctx.font = invFont(size, weight);
+    var words = String(s === undefined || s === null ? '' : s).split(/\s+/).filter(Boolean);
+    var lines = [], cur = '';
+    words.forEach(function (w) {
+      var t = cur ? cur + ' ' + w : w;
+      if (cur && ctx.measureText(t).width > maxW) { lines.push(cur); cur = w; }
+      else cur = t;
+    });
+    if (cur) lines.push(cur);
+    if (!lines.length) lines = [''];
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      lines[maxLines - 1] = invClip(ctx, lines[maxLines - 1] + ' \u2026', maxW, size, weight);
+    }
+    return lines;
+  }
+
+  function invRule(ctx, x1, x2, y, w, color) {
+    ctx.save();
+    ctx.strokeStyle = color || INV_LINE;
+    ctx.lineWidth = w || 1;
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+    ctx.restore();
+  }
+
+  function invDash(ctx, x1, x2, y) {
+    ctx.save();
+    ctx.strokeStyle = INV_LINE; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+    ctx.restore();
+  }
+
+  function invRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /* ------------------------------------------------ Code 39 for the footer
+     The reference receipt ends in a barcode, so the invoice does too: the
+     order reference encoded as Code 39 (9 elements per character \u2014 five bars
+     and four spaces, exactly three of them wide). Every pattern is validated
+     before it is drawn, so a bad table entry can never produce a broken strip. */
+  var CODE39 = {
+    '0': 'nnnwwnwnn', '1': 'wnnwnnnnw', '2': 'nnwwnnnnw', '3': 'wnwwnnnnn', '4': 'nnnwwnnnw',
+    '5': 'wnnwwnnnn', '6': 'nnwwwnnnn', '7': 'nnnwnnwnw', '8': 'wnnwnnwnn', '9': 'nnwwnnwnn',
+    'A': 'wnnnnwnnw', 'B': 'nnwnnwnnw', 'C': 'wnwnnwnnn', 'D': 'nnnnwwnnw', 'E': 'wnnnwwnnn',
+    'F': 'nnwnwwnnn', 'G': 'nnnnnwwnw', 'H': 'wnnnnwwnn', 'I': 'nnwnnwwnn', 'J': 'nnnnwwwnn',
+    'K': 'wnnnnnnww', 'L': 'nnwnnnnww', 'M': 'wnwnnnnwn', 'N': 'nnnnwnnww', 'O': 'wnnnwnnwn',
+    'P': 'nnwnwnnwn', 'Q': 'nnnnnnwww', 'R': 'wnnnnnwwn', 'S': 'nnwnnnwwn', 'T': 'nnnnwnwwn',
+    'U': 'wwnnnnnnw', 'V': 'nwwnnnnnw', 'W': 'wwwnnnnnn', 'X': 'nwnnwnnnw', 'Y': 'wwnnwnnnn',
+    'Z': 'nwwnwnnnn', '-': 'nwnnnnwnw', '.': 'wwnnnnwnn', ' ': 'nwwnnnwnn', '$': 'nwnwnwnnn',
+    '/': 'nwnwnnnwn', '+': 'nwnnnwnwn', '%': 'nnnwnwnwn', '*': 'nwnnwnwnn'
+  };
+
+  function code39Pattern(ch) {
+    var pat = CODE39[ch];
+    if (!pat || pat.length !== 9) return null;
+    var wide = 0, i;
+    for (i = 0; i < 9; i++) {
+      if (pat[i] !== 'n' && pat[i] !== 'w') return null;
+      if (pat[i] === 'w') wide++;
+    }
+    return wide === 3 ? pat : null;      /* always exactly 3 wide elements */
+  }
+
+  /* the barcode value: the order reference, uppercased and restricted to the
+     Code 39 character set (returns '' when nothing usable is left) */
+  function code39Value(raw) {
+    return String(raw || '').toUpperCase().replace(/[^0-9A-Z\-. $/+%]/g, '');
+  }
+
+  function code39Modules(value) {
+    var s = code39Value(value);
+    if (!s) return '';
+    var chars = ('*' + s + '*').split('');
+    var out = '';
+    for (var c = 0; c < chars.length; c++) {
+      var pat = code39Pattern(chars[c]);
+      if (!pat) return '';
+      if (c) out += '0';                              /* one narrow gap */
+      for (var j = 0; j < 9; j++) {
+        var bit = (j % 2 === 0) ? '1' : '0';          /* bars at 0,2,4,6,8 */
+        var n = pat[j] === 'w' ? 3 : 1;
+        for (var k = 0; k < n; k++) out += bit;
+      }
+    }
+    return out;
+  }
+
+  function drawBarcode(ctx, value, centerX, bottomY, maxW, h) {
+    var mods = code39Modules(value);
+    if (!mods) return false;
+    var mw = Math.min(2, maxW / mods.length);
+    if (mw < 0.45) return false;                      /* too dense to read */
+    var x = centerX - (mods.length * mw) / 2;
+    ctx.save();
+    ctx.fillStyle = INV_INK;
+    for (var i = 0; i < mods.length; i++) {
+      if (mods[i] === '1') ctx.fillRect(x + i * mw, bottomY - h, mw + 0.3, h);
+    }
+    ctx.restore();
+    return true;
+  }
+
+  /* ------------------------------------------------------------- the model */
+  function invoiceRef(kind, row) {
+    var typed = kind === 'swiggy' ? (row.orderNo || '') : '';
+    return String(typed || row.id || '');
+  }
+
+  function invStamp() {
+    var d = new Date();
+    return 'Generated ' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
+      ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /* every field of the order, laid out the way the reference receipt reads */
+  function invoiceModel(kind, row) {
+    var isSw = kind === 'swiggy';
+    var qty = +row.qty || 1;
+    var unit = isSw ? (+row.sellingPrice || 0) : (+row.rate || 0);
+    var line = unit * qty;
+    var discount = isSw ? 0 : (+row.offerAmount || 0);
+    var total = isSw ? line : (row.final === undefined ? line - discount : +row.final);
+    var ref = invoiceRef(kind, row);
+    var cat = CAT_LABEL[row.category] || '\u2014';
+
+    var totals = [{ k: 'Subtotal', v: inr(line, 2) }];
+    if (discount > 0) totals.push({ k: 'Discount', v: '\u2212' + inr(discount, 2) });
+    totals.push({ k: isSw ? 'Total paid' : 'Total', v: inr(total, 2), strong: true });
+
+    return {
+      ref: ref,
+      brand: {
+        name: state.data.meta.business || 'Babyz Pizza',
+        place: state.data.meta.channel || 'Garia, Kolkata'
+      },
+      metaLeft: [
+        /* "Order no." only when one was actually typed; otherwise the row's own
+           id is shown, and calling that an order number would be a stretch */
+        { k: (kind === 'swiggy' && row.orderNo) ? 'Order no.' : 'Bill ref.', v: ref },
+        { k: 'Date', v: dNice(row.date) },
+        { k: 'Customer', v: row.customer || '\u2014' }
+      ],
+      metaRight: [
+        { k: 'Channel', v: isSw ? 'Swiggy \u00B7 online' : 'Walk-in \u00B7 offline' },
+        { k: 'Type', v: cat },
+        { k: 'Quantity', v: String(qty) }
+      ],
+      items: [{
+        name: (qty > 1 ? qty + ' \u00D7 ' : '') + (row.item || '\u2014'),
+        line: inr(line, 2),
+        sub: inr(unit, 2) + ' each \u00B7 ' + cat +
+          (isSw ? ' \u00B7 paid to Swiggy' : (discount > 0 ? ' \u00B7 offer applied' : ''))
+      }],
+      totals: totals,
+      note: row.note || '',
+      footer: 'THANK YOU FOR ORDERING WITH US!',
+      barcode: ref,
+      stamp: (state.data.meta.business || 'Babyz Pizza') + ' \u00B7 ' +
+        (state.data.meta.channel || '') + ' \u00B7 ' + invStamp()
+    };
+  }
+
+  /* ------------------------------------------------------------- the layout */
+  function drawInvoice(canvas, m) {
+    var W = A4.w, H = A4.h;
+    canvas.width = Math.round(W * INV_SCALE);
+    canvas.height = Math.round(H * INV_SCALE);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(INV_SCALE, 0, 0, INV_SCALE, 0, 0);   /* draw in points */
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+
+    var bx = INV_PAD, by = INV_PAD;
+    var bw = W - INV_PAD * 2, bh = H - INV_PAD * 2;
+    var cx = bx + INV_INNER, cw = bw - INV_INNER * 2, xr = cx + cw;
+
+    /* the receipt frame */
+    ctx.save();
+    ctx.strokeStyle = INV_BORDER; ctx.lineWidth = 1;
+    invRoundRect(ctx, bx + .5, by + .5, bw - 1, bh - 1, 12);
+    ctx.stroke();
+    ctx.restore();
+
+    var y = by + INV_INNER;
+
+    /* ---- brand: the real logo when it is available ---- */
+    var ms = 74;
+    if (m.logo) {
+      /* the artwork is white-backed, so it sits straight on the page */
+      ctx.drawImage(m.logo, W / 2 - ms / 2, y, ms, ms);
+    } else {
+      /* no logo file: the drawn tile from before */
+      var grd = ctx.createLinearGradient(W / 2 - 46 / 2, y, W / 2 + 46 / 2, y + 46);
+      grd.addColorStop(0, '#ffb347'); grd.addColorStop(.55, '#ff7a18'); grd.addColorStop(1, '#f26100');
+      ctx.save(); ctx.fillStyle = grd;
+      invRoundRect(ctx, W / 2 - 23, y, 46, 46, 13);
+      ctx.fill(); ctx.restore();
+      invText(ctx, '\uD83C\uDF55', W / 2, y + 32, { size: 24, align: 'center' });
+    }
+    y += ms + 26;
+
+    /* the logo carries the name and the tagline in its own artwork, so only the
+       readable typeset name and the place are set here */
+    invText(ctx, m.brand.name, W / 2, y, { size: 23, weight: 800, align: 'center', spacing: 3.2, upper: true });
+    y += 16;
+    invText(ctx, m.brand.place, W / 2, y, { size: 9.4, align: 'center', color: INV_FAINT });
+    y += 18;
+    invDash(ctx, cx, xr, y);
+    y += 24;
+
+    /* ---- title ---- */
+    invText(ctx, 'Invoice', W / 2, y, { size: 12, weight: 800, align: 'center', spacing: 4.5, upper: true });
+    invRule(ctx, W / 2 - 74, W / 2 - 46, y - 4, 1);
+    invRule(ctx, W / 2 + 46, W / 2 + 74, y - 4, 1);
+    y += 27;
+
+    /* ---- order details, two columns ---- */
+    var rows = Math.max(m.metaLeft.length, m.metaRight.length);
+    var half = cw / 2 - 16;
+    for (var i = 0; i < rows; i++) {
+      var L = m.metaLeft[i], R = m.metaRight[i];
+      if (L) {
+        invText(ctx, L.k, cx, y, { size: 8.2, weight: 800, spacing: 1.2, color: INV_FAINT, upper: true });
+        invText(ctx, invClip(ctx, L.v, half, 11, 700), cx, y + 15, { size: 11, weight: 700 });
+      }
+      if (R) {
+        invText(ctx, R.k, xr, y, { size: 8.2, weight: 800, spacing: 1.2, color: INV_FAINT, align: 'right', upper: true });
+        invText(ctx, invClip(ctx, R.v, half, 11, 700), xr, y + 15, { size: 11, weight: 700, align: 'right' });
+      }
+      y += 33;
+    }
+
+    /* ---- item(s) ---- */
+    y += 4;
+    invDash(ctx, cx, xr, y);
+    y += 20;
+    invText(ctx, 'Item', cx, y, { size: 8.2, weight: 800, spacing: 1.4, color: INV_FAINT, upper: true });
+    invText(ctx, 'Amount', xr, y, { size: 8.2, weight: 800, spacing: 1.4, color: INV_FAINT, align: 'right', upper: true });
+    y += 8;
+    invRule(ctx, cx, xr, y);
+    y += 20;
+
+    var lh = 14.5;
+    m.items.forEach(function (it) {
+      var lines = invWrap(ctx, it.name, cw - 150, 11.6, 700, 2);
+      for (var k = 0; k < lines.length; k++) {
+        invText(ctx, lines[k], cx, y + k * lh, { size: 11.6, weight: 700 });
+      }
+      invText(ctx, it.line, xr, y, { size: 11.6, weight: 700, align: 'right' });
+      var subY = y + (lines.length - 1) * lh + 14;
+      invText(ctx, invClip(ctx, it.sub, cw - 150, 9.2, 400), cx, subY, { size: 9.2, color: INV_SOFT });
+      y = subY + 24;
+    });
+
+    /* ---- money ---- */
+    invRule(ctx, cx, xr, y - 6);
+    y += 14;
+    m.totals.forEach(function (t) {
+      if (t.strong) {
+        invRule(ctx, xr - 210, xr, y - 13, 1.4, INV_INK);
+        invText(ctx, t.k, xr - 130, y, { size: 12, weight: 800, align: 'right' });
+        invText(ctx, t.v, xr, y, { size: 15, weight: 800, align: 'right' });
+        y += 26;
+      } else {
+        invText(ctx, t.k, xr - 130, y, { size: 10.6, weight: 600, align: 'right', color: INV_SOFT });
+        invText(ctx, t.v, xr, y, { size: 11.4, weight: 700, align: 'right' });
+        y += 19;
+      }
+    });
+
+    /* ---- note ---- */
+    if (m.note) {
+      var nl = invWrap(ctx, m.note, cw - 24, 10.4, 600, 3);
+      var nh = 38 + (nl.length - 1) * 14;
+      ctx.save();
+      ctx.fillStyle = INV_TINT;
+      invRoundRect(ctx, cx, y - 6, cw, nh, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#ffe0c2'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
+      invText(ctx, 'Note', cx + 12, y + 10, { size: 8.2, weight: 800, spacing: 1.2, color: INV_ORANGE, upper: true });
+      for (var n = 0; n < nl.length; n++) {
+        invText(ctx, nl[n], cx + 12, y + 26 + n * 14, { size: 10.4, weight: 600 });
+      }
+      y += nh + 4;
+    }
+
+    /* ---- footer, anchored to the bottom of the frame ---- */
+    var barH = 42, maxBarW = Math.min(300, cw);
+    var stampY = by + bh - INV_INNER;
+    var barNumY = stampY - 17;
+    var barBottom = barNumY - 13;
+    var thanksY = barBottom - barH - 24;
+    var ruleY = thanksY - 24;
+    if (y + 16 > ruleY) {                            /* unusually tall content */
+      var push = (y + 16) - ruleY;
+      ruleY += push; thanksY += push; barBottom += push; barNumY += push; stampY += push;
+    }
+
+    invDash(ctx, cx, xr, ruleY);
+    invText(ctx, m.footer, W / 2, thanksY, { size: 10.4, weight: 800, align: 'center', spacing: 1.8 });
+    var drew = drawBarcode(ctx, m.barcode, W / 2, barBottom, maxBarW, barH);
+    if (drew) {
+      invText(ctx, code39Value(m.barcode), W / 2, barNumY, { size: 8.6, weight: 700, align: 'center', spacing: 1.6, color: INV_SOFT });
+    }
+    invText(ctx, invClip(ctx, m.stamp, cw, 7.8, 400), W / 2, stampY, { size: 7.8, align: 'center', color: INV_FAINT });
+
+    return canvas;
+  }
+
+  /* ------------------------------------------------------------- the files */
+  function invoiceFileBase(m) {
+    var s = String((m && m.ref) || 'order').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    return 'Babyz-Pizza-Invoice-' + (s || 'order');
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 4000);
+  }
+
+  function downloadDataUrl(dataUrl, filename) {
+    var a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { a.remove(); }, 4000);
+  }
+
+  function downloadInvoicePNG() {
+    if (!invoiceTarget) return;
+    var cv = $('invoiceCanvas'), name = invoiceFileBase(invoiceTarget.model) + '.png';
+    if (cv.toBlob) {
+      cv.toBlob(function (blob) {
+        if (blob) downloadBlob(blob, name); else downloadDataUrl(cv.toDataURL('image/png'), name);
+      }, 'image/png');
+    } else {
+      downloadDataUrl(cv.toDataURL('image/png'), name);
+    }
+  }
+
+  /* A minimal single-page PDF: the invoice JPEG (DCTDecode) filling one A4
+     page. Written by hand so there is no library to load and no CDN to reach —
+     which is what makes the download work on the hosted site too. */
+  function pdfFromCanvas(cv) {
+    var b64 = cv.toDataURL('image/jpeg', 0.94).split(',')[1];
+    var bin = atob(b64), jpeg = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) jpeg[i] = bin.charCodeAt(i) & 0xff;
+
+    var W = A4.w, H = A4.h;
+    var f = function (n) { return (Math.round(n * 100) / 100).toString(); };
+    var parts = [], offsets = [], total = 0;
+
+    function pushStr(s) {
+      var b = new Uint8Array(s.length), k;
+      for (k = 0; k < s.length; k++) b[k] = s.charCodeAt(k) & 0xff;
+      parts.push(b); total += b.length;
+    }
+    function pushBuf(b) { parts.push(b); total += b.length; }
+    function obj(n, body) { offsets[n] = total; pushStr(n + ' 0 obj\n' + body + '\nendobj\n'); }
+
+    pushStr('%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n');
+
+    var content = 'q ' + f(W) + ' 0 0 ' + f(H) + ' 0 0 cm /Im0 Do Q\n';
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+    obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+    obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + f(W) + ' ' + f(H) +
+      '] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>');
+    obj(4, '<< /Length ' + content.length + ' >>\nstream\n' + content + 'endstream');
+
+    offsets[5] = total;
+    pushStr('5 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + cv.width + ' /Height ' + cv.height +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpeg.length +
+      ' >>\nstream\n');
+    pushBuf(jpeg);
+    pushStr('\nendstream\nendobj\n');
+
+    var xrefAt = total;
+    var xref = 'xref\n0 6\n0000000000 65535 f \n';
+    for (var n = 1; n <= 5; n++) xref += String(offsets[n]).padStart(10, '0') + ' 00000 n \n';
+    pushStr(xref);
+    pushStr('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xrefAt + '\n%%EOF\n');
+
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
+  function downloadInvoicePDF() {
+    if (!invoiceTarget) return;
+    var cv = $('invoiceCanvas'), name = invoiceFileBase(invoiceTarget.model) + '.pdf';
+    try {
+      downloadBlob(pdfFromCanvas(cv), name);
+    } catch (e) {
+      console.error(e);
+      toast('This browser could not build the PDF \u2014 use Download PNG instead.', 'err');
+    }
+  }
+
+  /* ------------------------------------------------------------- the window */
+  function findOrderRow(collection, id) {
+    var rows = collection === 'swiggyOrders' ? swiggyRows() : offlineRows();
+    for (var i = 0; i < rows.length; i++) if (String(rows[i].id) === String(id)) return rows[i];
+    return null;
+  }
+
+  /* Works in every mode \u2014 including the hosted, read-only copy. Nothing is
+     written, so this deliberately does not go through guardWrite(). */
+  function openInvoice(collection, id) {
+    var kind = collection === 'swiggyOrders' ? 'swiggy' : 'offline';
+    var row = findOrderRow(collection, id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    withInvoiceLogo(function (logo) {
+      var model = invoiceModel(kind, row);
+      model.logo = logo;
+      drawInvoice($('invoiceCanvas'), model);
+      invoiceTarget = { kind: kind, row: row, model: model };
+
+      $('invoiceTitle').textContent = (kind === 'swiggy' ? 'Swiggy order' : 'Offline order') +
+        ' invoice \u00B7 ' + model.ref;
+      $('invoiceBackdrop').hidden = false;
+      setTabScrollLock(true);
+    });
+  }
+
+  function closeInvoice() {
+    $('invoiceBackdrop').hidden = true;
+    invoiceTarget = null;
+    setTabScrollLock(false);
+  }
+
+  /* the preview is a full-A4 canvas, so stop the page behind it scrolling */
+  function setTabScrollLock(on) {
+    document.body.style.overflow = on ? 'hidden' : '';
+  }
+
   /* ------------------------------------------------------------ render all */
   var activeTab = 'swiggy';
 
@@ -1811,13 +2399,24 @@
       var m = menuIndex('swiggy')[item] || {};
       var price = parseFloat($('swPriceAdd').value);
       if (isNaN(price)) price = +m.price || 0;
+
+      /* the order number is OPTIONAL — if one is typed it must be alphanumeric */
+      var orderNo = normalizeOrderNo($('swOrderNoAdd').value);
+      if (!orderNo.ok) {
+        toast('Order no. can only use letters, digits, "-" and "/" \u2014 no spaces or other symbols.', 'err');
+        $('swOrderNoAdd').focus();
+        return;
+      }
+
       addRow('swiggyOrders', {
         id: uid('swg'), date: $('swDateAdd').value || todayISO(),
+        orderNo: orderNo.value,
         customer: $('swCustomerAdd').value.trim() || 'Random',
         item: item, sourceItem: item, category: m.cat || 'veg',
         sellingPrice: price, qty: parseInt($('swQtyAdd').value, 10) || 1,
         note: $('swNoteAdd').value.trim()
       });
+      $('swOrderNoAdd').value = '';
       $('swCustomerAdd').value = ''; $('swNoteAdd').value = ''; $('swQtyAdd').value = 1;
     });
 
@@ -1964,8 +2563,21 @@
       if (e.target === this) closeModal();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !$('modalBackdrop').hidden) closeModal();
+      if (e.key !== 'Escape') return;
+      if (!$('invoiceBackdrop').hidden) { closeInvoice(); return; }
+      if (!$('modalBackdrop').hidden) closeModal();
     });
+
+    /* invoices: open the preview from any row, then download it */
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('[data-invoice]') : null;
+      if (!btn) return;
+      openInvoice(btn.dataset.invoice, btn.dataset.id);
+    });
+    $('invoiceClose').addEventListener('click', closeInvoice);
+    $('invoiceBackdrop').addEventListener('click', function (e) { if (e.target === this) closeInvoice(); });
+    $('invoicePdf').addEventListener('click', downloadInvoicePDF);
+    $('invoicePng').addEventListener('click', downloadInvoicePNG);
 
     /* staged deletions */
     $('undoDeleteBtn').addEventListener('click', requestUndo);
@@ -1985,6 +2597,7 @@
       if (/Add$/.test(t.id)) {
         var map = {
           swCustomerAdd: 'swAddBtn', swPriceAdd: 'swAddBtn', swQtyAdd: 'swAddBtn', swNoteAdd: 'swAddBtn',
+          swOrderNoAdd: 'swAddBtn',
           ofCustomerAdd: 'ofAddBtn', ofRateAdd: 'ofAddBtn', ofQtyAdd: 'ofAddBtn', ofOfferAdd: 'ofAddBtn', ofNoteAdd: 'ofAddBtn',
           invItemAdd: 'invAddBtn', invQtyAdd: 'invAddBtn', invRateAdd: 'invAddBtn',
           swpAmount: 'swpAddBtn', swpNote: 'swpAddBtn'
