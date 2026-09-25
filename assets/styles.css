@@ -742,6 +742,8 @@ body.has-pending #toast-host { bottom: 116px; }
 }
 .modal.danger .modal-icon { background: var(--red-50); border-color: var(--red-100); }
 .modal.ok .modal-icon { background: var(--green-50); border-color: var(--green-100); }
+.modal.edit .modal-icon { background: var(--orange-50); border-color: var(--orange-200); }
+.modal.warn .modal-icon { background: var(--orange-50); border-color: var(--orange-200); }
 
 .modal h3 {
   margin: 0 0 8px;
@@ -768,6 +770,18 @@ body.has-pending #toast-host { bottom: 116px; }
   word-break: break-word;
 }
 .modal-detail:empty { display: none; }
+
+/* an inline form control inside a modal's detail block (customer rename) */
+.modal-form { margin-top: 11px; display: flex; flex-direction: column; gap: 4px; }
+.modal-form label {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .9px;
+  color: var(--ink-400);
+}
+.modal-form input { width: 100%; }
+
 .modal-actions { display: flex; gap: 10px; justify-content: center; }
 .modal-actions .btn { min-width: 132px; justify-content: center; padding: 11px 18px; }
 

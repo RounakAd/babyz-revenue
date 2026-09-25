@@ -100,6 +100,24 @@ function stripPending(data) {
   return copy;
 }
 
+/* The add/edit path takes the full base (which still holds rows that are only
+   staged for deletion) and the view (base minus those rows). Writing the view
+   straight over STAGE would silently finish those deletions: /api/confirm reads
+   STAGE and pushes it into MAIN and REPO, and by then the rows are already gone
+   from it. So rebuild STAGE as base + the staged rows removed again, keeping the
+   deletions removable through /api/undo. */
+function mergeView(base, view) {
+  const out = JSON.parse(JSON.stringify(base || {}));
+  if (!view || typeof view !== 'object') return out;
+  for (const k of ['offlineOrders', 'swiggyOrders', 'swiggyPayouts', 'investments']) {
+    if (!Array.isArray(view[k]) || !Array.isArray(out[k])) continue;
+    const seen = {};
+    view[k].forEach((r) => { if (r && r.id != null) seen[r.id] = true; });
+    out[k] = out[k].filter((r) => (r && r.id != null) ? seen[r.id] : true);
+  }
+  return out;
+}
+
 function validate(data) {
   if (!data || typeof data !== 'object') return 'payload is not an object';
   for (const k of ['offlineOrders', 'swiggyOrders', 'swiggyPayouts', 'investments']) {
@@ -262,7 +280,7 @@ const server = http.createServer(async (req, res) => {
       touch(data);
       writeMain(data);
       writeRepo(data);
-      writeStage(body.view || data, body.pending || []);
+      writeStage(mergeView(data, body.view), body.pending || []);
 
       console.log('[add]     MAIN + STAGE + REPO written');
       json(res, 200, { ok: true, action: 'add', files: fileInfo() });

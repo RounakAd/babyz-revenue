@@ -28,9 +28,16 @@ and `renderAll()` only runs on `res.ok`, so the screen looks healthy.
 | `<Desktop>\Babyz Pizza Data\babyz-data-pending.js` | STAGE (2nd copy, staged deletions) |
 | `<repo>\data\babyz-data.js` | REPO — the site reads this; the one you commit |
 
-Add → all 3. Delete → STAGE only, then **Confirm delete** pushes STAGE → MAIN + REPO.
-Undo re-reads MAIN. Data format is `window.BABYZ_DATA = {…}` **JS, not JSON** (a `<script src>`
-works over `file://`; `fetch()` of JSON is CORS-blocked there).
+Add → all 3. **Edit** → all 3 (same `/api/rows` path as an add). Delete → STAGE only, then
+**Confirm delete** pushes STAGE → MAIN + REPO. Undo re-reads MAIN. Data format is
+`window.BABYZ_DATA = {…}` **JS, not JSON** (a `<script src>` works over `file://`; `fetch()` of
+JSON is CORS-blocked there).
+
+**`/api/rows` must never write `body.view` straight to STAGE.** `view` is `state.data` = base
+*minus* the rows that are only staged for deletion. Writing it to STAGE drops those rows while
+`pendingDeletes` still lists them, so a later **Confirm delete** finalises them and `/api/undo`
+can no longer bring them back — they vanish silently. `server.js` rebuilds STAGE with
+`mergeView(base, view)` instead. Any future save path must do the same.
 
 ## Swiggy weeks
 `weekPeriods()` is the single source of weeks: recorded payout ranges first (authoritative,
@@ -43,11 +50,22 @@ The menu is the **source of truth for an item's category** (`resolveCategory`), 
 between groups re-colours its table badges and re-slices the doughnut. A **deleted** item falls back
 to the category stored on the order, so history never breaks. `legacy` items keep a `category`.
 
+## Row actions
+`actionsCell(collection, id)` renders 🧾 Invoice (works everywhere, it only reads) plus
+✏️ Customer and Delete, both `readonly-hide`. Handlers are **delegated on `document`** in
+`wireEvents()` and keyed off `data-edit-customer` / `data-del` / `data-invoice`. Renaming a
+customer is allowed on `offlineOrders` and `swiggyOrders` only — payouts and investments have
+no customer field.
+
 ## Gotchas that have already bitten
 * `baseOpts(extra)` is a **shallow** `Object.assign` — passing `plugins` replaces the whole default
   plugins object and silently drops the legend styling. Re-declare `legend` when you override it.
 * A CSS `display` rule beats the `[hidden]` attribute. Assert visibility with
   `el.getClientRects().length`, never `el.hidden`. (`[hidden]{display:none!important}` is in place.)
+  **In a real browser.** In jsdom `getClientRects()` returns 0 even for a plainly visible inline
+  element with no layout box — there, assert on `getComputedStyle(el).display` instead. And inline
+  `assets/styles.css` yourself, because jsdom will not fetch the `<link>`, so the cascade (and
+  therefore `body.is-live .readonly-hide`) is silently untested.
 * A `<canvas>` has no DOM children — read chart state via `Chart.getChart(el)`.
 * Verify writes against the **files/API**, not just the DOM. See the browser-visual-audit skill,
   pitfalls 16 and 17.

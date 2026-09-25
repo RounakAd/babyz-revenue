@@ -448,7 +448,7 @@
   }
 
   function readOnlyWarn() {
-    toast('Read-only: this hosted copy cannot be edited. Open the site locally to add or delete rows.', 'err');
+    toast('Read-only: this hosted copy cannot be edited. Open the site locally to add, edit or delete rows.', 'err');
   }
 
   function saveDraft() {
@@ -636,6 +636,117 @@
     });
   }
 
+  /* ------------------------------------------------------------ customer name */
+  /* Renaming a customer is a normal save, not a staged delete: the corrected name
+     goes to the MAIN local file, the 2nd local copy and the repo copy in one go,
+     through the same /api/rows path an added row uses. */
+
+  var EDITABLE_CUSTOMER = { offlineOrders: 1, swiggyOrders: 1 };
+
+  /* a raw row is the one on disk; the table renders a computed copy of it, so we
+     look the row up in state.data (what is on screen) to pre-fill the input */
+  function rawOrderRow(collection, id) {
+    var list = (state.data && state.data[collection]) || [];
+    for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i];
+    return null;
+  }
+
+  function customerPlaceholder(collection, row) {
+    if (row && row.customer) return row.customer;
+    return collection === 'swiggyOrders' ? 'Random' : 'Walk-in';
+  }
+
+  function requestCustomerEdit(collection, id) {
+    if (!guardWrite()) return;
+    if (!EDITABLE_CUSTOMER[collection]) return;
+    var row = rawOrderRow(collection, id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var current = String(row.customer || '');
+    var who = COLL_LABEL[collection] || collection;
+
+    openModal({
+      tone: 'edit',
+      icon: '\u270F\uFE0F',
+      title: 'Edit the customer name',
+      message: 'Saving writes the corrected name to the <b>main local file</b>, the <b>2nd local copy</b> and the ' +
+        '<b>repo copy</b>, and every table, filter and chart refreshes straight away.',
+      detail: '<b>' + esc(who) + '</b> \u00B7 ' + esc(row.item || '') + ' \u00B7 ' + dNice(row.date) + '<br>' +
+        esc(describeRow(collection, row)) +
+        '<div class="modal-form"><label for="customerEditInput">Customer name</label>' +
+        '<input type="text" id="customerEditInput" autocomplete="off" spellcheck="false" maxlength="80" value="' +
+          esc(current) + '" placeholder="' + esc(customerPlaceholder(collection, row)) + '"></div>',
+      confirmText: 'Save name',
+      confirmClass: 'btn-primary',
+      onConfirm: function () {
+        var el = $('customerEditInput');
+        if (!el) return;
+        applyCustomerName(collection, id, el.value);
+      }
+    });
+
+    /* pre-select the whole name so typing replaces it, and let Enter save */
+    var input = $('customerEditInput');
+    if (input) {
+      input.focus();
+      input.select();
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        $('modalOk').click();
+      });
+    }
+  }
+
+  /* -> both copies, then all 3 files, then a pop-up confirming the save */
+  function applyCustomerName(collection, id, raw) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow(collection, id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var before = String(row.customer || '');
+    var after = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+    if (!after) after = customerPlaceholder(collection, row);
+
+    if (after === before) {
+      toast('Customer name unchanged \u2014 nothing was written.', '');
+      return;
+    }
+
+    /* state.base is what gets written to the files, state.data is what renders.
+       Mutating only one of them either saves nothing or shows nothing. */
+    var touched = 0;
+    ['base', 'data'].forEach(function (which) {
+      var list = (state[which] && state[which][collection]) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) !== String(id)) continue;
+        if (which === 'base') touched++;
+        var next = Object.assign({}, list[i]);   /* a fresh object per copy, never shared */
+        next.customer = after;
+        list[i] = next;
+      }
+    });
+    if (!touched) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    writeAll('Customer name saved to all 3 files: "' + before + '" \u2192 "' + after + '".')
+      .then(function (res) {
+        if (res && res.ok) {
+          renderAll();
+          openModal({
+            tone: 'ok',
+            icon: '\u2705',
+            title: 'Customer name saved',
+            message: 'Written to the <b>main local file</b>, the <b>2nd local copy</b> and the <b>repo copy</b>. ' +
+              'Commit &amp; push the repo copy to publish it to the live site.',
+            detail: esc(COLL_LABEL[collection] || collection) + ' \u00B7 ' + esc(row.item || '') +
+              '<br>"' + esc(before) + '" \u2192 <b>"' + esc(after) + '"</b>',
+            confirmText: 'Done',
+            confirmClass: 'btn-confirm'
+          });
+        }
+      });
+  }
+
   function requestUndo() {
     var n = state.pending.length;
     if (!n) return;
@@ -780,7 +891,7 @@
     if (state.mode === 'server') {
       badge.classList.add('local');
       txt.textContent = 'LOCAL \u00B7 WRITING FILES';
-      note.innerHTML = 'Adds write to all 3 files. Deletes stage in the 2nd local copy.';
+      note.innerHTML = 'Adds and edits write to all 3 files. Deletes stage in the 2nd local copy.';
       foot.innerHTML = '';
     } else if (state.mode === 'draft') {
       badge.classList.add('draft');
@@ -807,12 +918,12 @@
       host.innerHTML = '<div class="banner warn"><span class="bico">\u26A0\uFE0F</span><div><b>Draft mode.</b> ' +
         'The local file writer is not reachable, so rows are saved in this browser only. ' +
         'Run <code>start-local.bat</code> in the project folder, then reopen <code>http://localhost:' + API_PORT + '</code> ' +
-        'to have adds and deletes written to the real data files.' +
+        'to have adds, edits and deletes written to the real data files.' +
         (state.draftAvailable ? ' A previously saved draft was loaded.' : '') + '</div></div>';
     } else {
       host.innerHTML = '<div class="banner lock"><span class="bico">\uD83D\uDD12</span><div><b>Read-only live copy.</b> ' +
         'Every figure on this page is read from the repo copy committed to the repository. ' +
-        'Adding and deleting rows is disabled here by design \u2014 do that from the local copy, then commit &amp; push.</div></div>';
+        'Adding, editing and deleting rows is disabled here by design \u2014 do that from the local copy, then commit &amp; push.</div></div>';
     }
   }
 
@@ -909,12 +1020,15 @@
 
   /* ------------------------------------------------------------ tables */
   /* one row's controls: the invoice is available everywhere (the hosted copy
-     included \u2014 it only reads the row), the delete button only ever appears
-     on a page that is allowed to write */
+     included \u2014 it only reads the row), the rename and delete buttons only ever
+     appear on a page that is allowed to write. Both carry .readonly-hide and
+     both handlers re-check guardWrite(), because the CSS alone protects nothing. */
   function actionsCell(collection, id) {
     return '<div class="row-actions">' +
       '<button class="btn btn-ghost btn-sm" data-invoice="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Preview this order as an invoice and download it as PDF or PNG">\uD83E\uDDFE Invoice</button>' +
+      '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-customer="' + esc(collection) + '" data-id="' + esc(id) +
+        '" title="Edit this order\'s customer name and save it to all 3 files">\u270F\uFE0F Customer</button>' +
       '<button class="btn btn-danger readonly-hide" data-del="' + esc(collection) + '" data-id="' + esc(id) +
         '">Delete</button>' +
       '</div>';
@@ -2546,6 +2660,8 @@
 
     document.addEventListener('click', function (e) {
       if (!e.target.closest) return;
+      var ec = e.target.closest('[data-edit-customer]');
+      if (ec) { requestCustomerEdit(ec.dataset.editCustomer, ec.dataset.id); return; }
       var mv = e.target.closest('[data-menu-move]');
       if (mv) { requestMenuMove(mv.dataset.menuMove, mv.dataset.menuName); return; }
       var dl = e.target.closest('[data-menu-del]');
@@ -2594,6 +2710,7 @@
       var menuMap = { 'menuName-offline': 'menuAddBtn-offline', 'menuPrice-offline': 'menuAddBtn-offline',
                       'menuName-swiggy': 'menuAddBtn-swiggy', 'menuPrice-swiggy': 'menuAddBtn-swiggy' };
       if (menuMap[t.id]) { e.preventDefault(); $(menuMap[t.id]).click(); return; }
+      if (t.id === 'customerEditInput') { e.preventDefault(); $('modalOk').click(); return; }
       if (/Add$/.test(t.id)) {
         var map = {
           swCustomerAdd: 'swAddBtn', swPriceAdd: 'swAddBtn', swQtyAdd: 'swAddBtn', swNoteAdd: 'swAddBtn',
