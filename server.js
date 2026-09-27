@@ -76,11 +76,69 @@ function serialize(data, header) {
   return header + '\nwindow.BABYZ_DATA = ' + JSON.stringify(data, null, 2) + ';\n';
 }
 
+/* Block the event loop for a few ms. Used only between rename retries, which
+   happen at most a handful of times per save, so the stall is imperceptible. */
+function sleepSync(ms) {
+  const sab = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(sab, 0, 0, ms);
+}
+
+const LOCK_CODES = { EPERM: 1, EACCES: 1, EBUSY: 1, EEXIST: 1 };
+
+/* Write `text` to `file` as safely as the OS allows.
+ *
+ * The atomic route is: write a .tmp next to the target, then rename it over the
+ * target. On Windows rename() needs DELETE access on the destination, so it
+ * fails with EPERM whenever another program has the file open without sharing
+ * delete - an editor with the file in a buffer (Zed, VS Code), OneDrive
+ * mid-sync, an antivirus scan, or the Explorer preview pane. A plain write only
+ * needs WRITE access, which those holders usually do allow.
+ *
+ * So: try the atomic rename a few times (clearing any read-only attribute and
+ * pausing for transient holders), and if it is still refused, fall back to
+ * writing straight into the target. That keeps the save working instead of
+ * failing and stranding the new data in an orphaned .tmp. */
 function writeAtomic(file, text) {
   ensureDir(path.dirname(file));
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, text, 'utf8');
-  fs.renameSync(tmp, file);
+
+  let lastErr = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!LOCK_CODES[e.code]) throw e;
+      /* chmod on Windows only toggles the read-only bit. Harmless when the
+         file is already writable. */
+      try { if (fs.existsSync(file)) fs.chmodSync(file, 0o666); } catch (_) {}
+      try { fs.chmodSync(tmp, 0o666); } catch (_) {}
+      sleepSync(80 * (attempt + 1));
+    }
+  }
+
+  /* rename is still blocked — write the target in place instead. */
+  try {
+    fs.writeFileSync(file, text, 'utf8');
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    console.warn('[write]   rename blocked (' + (lastErr && lastErr.code) + ') — wrote ' +
+      path.basename(file) + ' in place instead. Close the program holding it ' +
+      '(an editor with the file open is the usual cause).');
+    return;
+  } catch (e2) {
+    const err = new Error(
+      'Could not write ' + file + ' (' + (lastErr && lastErr.code) + ').\n' +
+      'Another program is holding the file open - an editor with the file in a\n' +
+      'buffer, OneDrive, antivirus, or an Explorer preview pane. Your new data is\n' +
+      'safe in ' + tmp + '. Close that program and save again.'
+    );
+    err.code = (lastErr && lastErr.code) || e2.code;
+    err.file = file;
+    err.tmpFile = tmp;
+    throw err;
+  }
 }
 
 function readData(file) {

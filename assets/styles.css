@@ -757,6 +757,21 @@ body.has-pending #toast-host { bottom: 116px; }
   color: var(--ink-500);
   line-height: 1.55;
 }
+/* a raw error string shown in the modal (save failures) — must wrap, since it
+   is usually a long Windows path */
+.modal p code {
+  display: block;
+  margin-top: 4px;
+  background: var(--ink-100);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  color: var(--ink-700);
+  word-break: break-word;
+}
 .modal-detail {
   background: var(--orange-50);
   border: 1px solid var(--orange-100);

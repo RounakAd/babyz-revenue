@@ -451,6 +451,38 @@
     toast('Read-only: this hosted copy cannot be edited. Open the site locally to add, edit or delete rows.', 'err');
   }
 
+  /* A failed write must not be a 3-second toast the user can miss. Until it
+     succeeds the change lives only in this browser tab, and if the write got as
+     far as writing the .tmp file the new copy is sitting on disk unrenamed.
+     So show the real error in the modal, which stays until dismissed. */
+  function saveFailed(what, res) {
+    var raw = (res && res.error) || 'unknown error';
+    var hint = '';
+    if (/EPERM|EACCES|EBUSY/i.test(raw)) {
+      hint = 'Windows refused to replace the data file. The usual causes are a <b>read-only</b> ' +
+        'attribute on the file, or another program holding it open \u2014 most often OneDrive, ' +
+        'antivirus, or an Explorer preview pane.<br><br>Close that program and save again. ' +
+        '<b>Nothing has been lost</b>: the new data was written next to the real file as ' +
+        '<code>babyz-data.js.tmp</code>.';
+    } else if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) {
+      hint = 'The local writer is not reachable. Start it with <code>node server.js</code> ' +
+        '(or <code>start-local.bat</code>) and save again.';
+    } else {
+      hint = 'The change is still only in this browser tab and has <b>not</b> been written to disk.';
+    }
+    openModal({
+      tone: 'danger',
+      icon: '\u26A0\uFE0F',
+      title: what + ' failed',
+      message: '<code>' + esc(raw).replace(/\n/g, '<br>') + '</code>',
+      detail: hint,
+      confirmText: 'Close',
+      confirmClass: 'btn-primary',
+      hideCancel: true,
+      onConfirm: null
+    });
+  }
+
   function saveDraft() {
     try {
       localStorage.setItem(LS_DRAFT, JSON.stringify({ data: state.base, pending: state.pending }));
@@ -467,7 +499,7 @@
     return postJSON('/api/rows', { data: state.base, view: state.data, pending: state.pending })
       .then(function (res) {
         if (res && res.ok) toast(okMsg || 'Saved to all 3 files (main local + 2nd local copy + repo copy).', 'ok');
-        else toast('Save failed: ' + ((res && res.error) || 'unknown error'), 'err');
+        else saveFailed('Save', res);
         return res || { ok: false };
       });
   }
@@ -478,7 +510,7 @@
     if (state.mode === 'draft') return saveDraft();
     return postJSON('/api/stage', { view: state.data, pending: state.pending })
       .then(function (res) {
-        if (!res || !res.ok) toast('Could not stage the deletion: ' + ((res && res.error) || 'unknown error'), 'err');
+        if (!res || !res.ok) saveFailed('Delete', res);
         return res || { ok: false };
       });
   }
@@ -493,7 +525,7 @@
       return;
     }
     postJSON('/api/undo', {}).then(function (res) {
-      if (!res || !res.ok) { toast('Undo failed: ' + ((res && res.error) || 'unknown error'), 'err'); return; }
+      if (!res || !res.ok) { saveFailed('Undo', res); return; }
       state.base = normalize(res.base);
       state.data = clone(state.base);
       state.pending = [];
@@ -512,7 +544,7 @@
       return;
     }
     postJSON('/api/confirm', {}).then(function (res) {
-      if (!res || !res.ok) { toast('Confirm failed: ' + ((res && res.error) || 'unknown error'), 'err'); return; }
+      if (!res || !res.ok) { saveFailed('Confirm delete', res); return; }
       state.base = normalize(res.base);
       state.data = clone(state.base);
       state.pending = [];
@@ -583,6 +615,8 @@
     var ok = $('modalOk');
     ok.textContent = opts.confirmText || 'Confirm';
     ok.className = 'btn ' + (opts.confirmClass || 'btn-primary');
+    /* an error notice has nothing to cancel - hide the ghost button */
+    $('modalCancel').hidden = !!opts.hideCancel;
     modalConfirmFn = opts.onConfirm || null;
     bd.hidden = false;
     setTimeout(function () { ok.focus(); }, 40);

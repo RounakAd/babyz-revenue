@@ -69,3 +69,30 @@ no customer field.
 * A `<canvas>` has no DOM children — read chart state via `Chart.getChart(el)`.
 * Verify writes against the **files/API**, not just the DOM. See the browser-visual-audit skill,
   pitfalls 16 and 17.
+
+## The write path — `writeAtomic` must never strand a `.tmp`
+Every save goes through `writeAtomic(file, text)` in `server.js`: write `<file>.tmp`, then rename
+it over the target.
+
+**On Windows `rename` over an existing file needs DELETE access**, so it fails with `EPERM`
+whenever anything holds the file open sharing read+write but *not* delete — an editor with the
+file in a buffer (**Zed is the one on this machine**), OneDrive, antivirus, the Explorer preview
+pane. A plain write only needs WRITE access and is usually still allowed. That asymmetry is the
+whole design:
+
+1. write the `.tmp`;
+2. `renameSync` up to 6× with backoff, `chmod 0o666` on both files between attempts;
+3. **still refused → `writeFileSync(file, text)` in place**, then drop the `.tmp`;
+4. only if that also fails, throw naming the file, the code and the likely holders.
+
+Never "simplify" this back to a bare `writeFileSync` + `renameSync`. The old version failed the
+save and left the new data orphaned in `babyz-data.js.tmp` — exactly how 7 offline orders were
+nearly lost on 27 Sep 2026.
+
+**The read-only attribute is NOT the usual cause** — the real incident showed
+`Attributes: Archive`, `IsReadOnly: False`. To name the holder use the Windows Restart Manager
+API (`rstrtmgr.dll`: `RmStartSession` → `RmRegisterResources` → `RmGetList`); it returned
+`pid=13880 app=Zed`.
+
+A failed write must be **loud**: the client shows it in the modal via `saveFailed(what, res)`,
+never a 3.6 s toast.

@@ -4,7 +4,7 @@
 window.BABYZ_DATA = {
   "meta": {
     "version": 1,
-    "updatedAt": "2026-09-25T07:30:02.268Z",
+    "updatedAt": "2026-09-27T05:29:43.424Z",
     "settings": {
       "costPerPizza": 80,
       "applyCostToSwiggy": false
@@ -364,6 +364,32 @@ window.BABYZ_DATA = {
       "qty": 2,
       "offer": true,
       "offerAmount": 50,
+      "note": ""
+    },
+    {
+      "id": "off_mujcw5og041y",
+      "date": "2026-09-26",
+      "customer": "Mithai",
+      "item": "Chicken Pepperoni Pizza",
+      "sourceItem": "Chicken Pepperoni Pizza",
+      "category": "nonveg",
+      "rate": 180,
+      "qty": 1,
+      "offer": false,
+      "offerAmount": 0,
+      "note": ""
+    },
+    {
+      "id": "off_mujcxh54vca7",
+      "date": "2026-09-26",
+      "customer": "Mithai",
+      "item": "Chicken Pepperoni Pizza",
+      "sourceItem": "Chicken Pepperoni Pizza",
+      "category": "nonveg",
+      "rate": 180,
+      "qty": 1,
+      "offer": false,
+      "offerAmount": 0,
       "note": ""
     }
   ],
