@@ -459,9 +459,9 @@
     var raw = (res && res.error) || 'unknown error';
     var hint = '';
     if (/EPERM|EACCES|EBUSY/i.test(raw)) {
-      hint = 'Windows refused to replace the data file. The usual causes are a <b>read-only</b> ' +
-        'attribute on the file, or another program holding it open \u2014 most often OneDrive, ' +
-        'antivirus, or an Explorer preview pane.<br><br>Close that program and save again. ' +
+      hint = 'Another program is holding the data file open, so Windows would not let it be ' +
+        'replaced. This is usually an editor with the file open (Zed, VS Code), OneDrive, ' +
+        'antivirus, or the Explorer preview pane.<br><br>Close that program and save again. ' +
         '<b>Nothing has been lost</b>: the new data was written next to the real file as ' +
         '<code>babyz-data.js.tmp</code>.';
     } else if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) {
