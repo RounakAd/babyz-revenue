@@ -77,6 +77,40 @@ table cell, the search haystack, `invoiceRef`, and the invoice's `Order no.` lin
 and removes the number. Both the add-panel field and the row editor go through the one
 `normalizeOrderNo`, so the two paths can never drift.
 
+## An order is ONE row with many `lines` — never multiply the summary fields
+An order carries `lines: [{ item, qty, price }]`. `rowLines(row, kind)` is the **only** way to
+read them: it returns `row.lines` when present and otherwise synthesises a single line from the
+old flat fields, so pre-`lines` rows keep working with no migration.
+
+**The trap:** `item` / `qty` / `sellingPrice`(or `rate`) are kept on the row as a *summary* —
+`qty` is the **total units** and `sellingPrice` the **first line's** price. So
+`sellingPrice × qty` is **not** the order's value once there is more than one pizza. Every money
+figure must come from the lines. The full set of price×qty products was enumerated and fixed in
+`describeRow` (both channels), `offlineRows`, `swiggyRows`, `invoiceModel` — **never reintroduce
+one.** `offlineRows`/`swiggyRows` compute `amount`/`gross`/`final`/`cost`, and every KPI, chart
+and table reads those, so those two functions are the single choke point.
+
+Anything that reads an item must be line-aware: `pass()` matches when **any** line matches
+(`row.lineItems` / `row.lineCats`) and the search haystack joins all line items; the item charts
+aggregate per line; the category doughnuts attribute **per line** (that is what makes a mixed
+veg/non-veg order land in both slices). The offline **offer belongs to the order**, so the
+doughnut spreads it across lines *in proportion to their value* — that keeps its total equal to
+the sum of the orders' `final` amounts.
+
+The table shows a stacked list when >1 line (`itemsCell`) and **varies** in the price column when
+the lines disagree (`priceCell`). The invoice already loops `m.items`, so one entry per pizza
+works; it tightens its row pitch past 6 lines.
+
+**The lines editor is one reusable repeater** — `renderLinesEditor` / `wireLinesEditor` /
+`readLinesEditor` / `snapshotLines` all keyed off the same `.lines-editor` root, driving both add
+panels and the ✏️ Items modal so they cannot drift. `readLinesEditor` validates and names the
+offending row; `snapshotLines` reads *without* validating, for carrying a half-typed order across
+a dropdown rebuild. `itemSelectHtml` re-adds an **off-menu item** so opening the editor on an
+order whose item was deleted cannot silently change what was sold.
+
+`renderFilters` rebuilds the add-panel editors only when `JSON.stringify(state.data.menus)`
+changes — never on every `renderAll()`, which would wipe a half-typed order.
+
 ## Gotchas that have already bitten
 * `baseOpts(extra)` is a **shallow** `Object.assign` — passing `plugins` replaces the whole default
   plugins object and silently drops the legend styling. Re-declare `legend` when you override it.

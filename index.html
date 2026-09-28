@@ -79,13 +79,20 @@
         <div class="field"><label for="swDateAdd">Date</label><input type="date" id="swDateAdd"></div>
         <div class="field"><label for="swOrderNoAdd">Order no. <span class="opt">optional</span></label><input type="text" id="swOrderNoAdd" placeholder="e.g. #1234" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false"></div>
         <div class="field"><label for="swCustomerAdd">Customer</label><input type="text" id="swCustomerAdd" placeholder="Random"></div>
-        <div class="field span2"><label for="swItemAdd">Menu item</label><select id="swItemAdd"></select></div>
-        <div class="field"><label for="swPriceAdd">Selling price (₹)</label><input type="number" id="swPriceAdd" min="0" step="1" placeholder="0"></div>
-        <div class="field"><label for="swQtyAdd">Qty</label><input type="number" id="swQtyAdd" min="1" step="1" value="1"></div>
         <div class="field"><label for="swNoteAdd">Note</label><input type="text" id="swNoteAdd" placeholder="optional"></div>
+        <div class="field span-all">
+          <label>Pizzas on this order <span class="opt">add as many as you like</span></label>
+          <div class="lines-editor" id="swLines">
+            <div class="lines-body"></div>
+            <div class="lines-foot">
+              <button type="button" class="btn btn-ghost btn-sm line-add">➕ Add another pizza</button>
+              <span class="lines-total"></span>
+            </div>
+          </div>
+        </div>
         <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="swAddBtn">Add order</button></div>
       </div>
-      <div class="field" style="margin-top:8px"><span class="hintline">Picking an item auto-fills the menu price — you can still type the exact amount Swiggy charged. The <b>order no.</b> is optional, is written as <code>#XXXX</code> (four digits), and is printed on the invoice.</span></div>
+      <div class="field" style="margin-top:8px"><span class="hintline">Every pizza you add becomes its own line on the order, on the invoice and in the item charts. Picking an item auto-fills the menu price — you can still type the exact amount Swiggy charged. The <b>order no.</b> is optional, is written as <code>#XXXX</code> (four digits), and is printed on the invoice.</span></div>
     </div>
     <div class="card tight">
       <div class="card-head"><h3>Swiggy orders</h3><span class="hint" id="swTableCount"></span><span class="spacer"></span></div>
@@ -170,13 +177,21 @@
       <div class="add-grid">
         <div class="field"><label for="ofDateAdd">Date</label><input type="date" id="ofDateAdd"></div>
         <div class="field"><label for="ofCustomerAdd">Customer</label><input type="text" id="ofCustomerAdd" placeholder="Walk-in"></div>
-        <div class="field span2"><label for="ofItemAdd">Menu item</label><select id="ofItemAdd"></select></div>
-        <div class="field"><label for="ofRateAdd">Rate (₹)</label><input type="number" id="ofRateAdd" min="0" step="1" placeholder="0"></div>
-        <div class="field"><label for="ofQtyAdd">Qty</label><input type="number" id="ofQtyAdd" min="1" step="1" value="1"></div>
-        <div class="field"><label for="ofOfferAdd">Offer amount (₹)</label><input type="number" id="ofOfferAdd" min="0" step="1" value="0"></div>
+        <div class="field"><label for="ofOfferAdd">Offer amount (₹) <span class="opt">whole order</span></label><input type="number" id="ofOfferAdd" min="0" step="1" value="0"></div>
         <div class="field"><label for="ofNoteAdd">Note</label><input type="text" id="ofNoteAdd" placeholder="optional"></div>
+        <div class="field span-all">
+          <label>Pizzas on this order <span class="opt">add as many as you like</span></label>
+          <div class="lines-editor" id="ofLines">
+            <div class="lines-body"></div>
+            <div class="lines-foot">
+              <button type="button" class="btn btn-ghost btn-sm line-add">➕ Add another pizza</button>
+              <span class="lines-total"></span>
+            </div>
+          </div>
+        </div>
         <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="ofAddBtn">Add order</button></div>
       </div>
+      <div class="field" style="margin-top:8px"><span class="hintline">Every pizza you add becomes its own line on the order, on the invoice and in the item charts. Picking an item auto-fills the menu price — you can still type the exact amount charged. The <b>offer</b> is taken off the whole order, not one pizza.</span></div>
     </div>
     <div class="card tight">
       <div class="card-head"><h3>Offline orders</h3><span class="hint" id="ofTableCount"></span></div>

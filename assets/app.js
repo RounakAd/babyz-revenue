@@ -564,13 +564,15 @@
   function describeRow(collection, row) {
     if (!row) return '';
     if (collection === 'offlineOrders') {
-      return (row.item || '') + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
-        ' \u00B7 ' + inr((+row.rate || 0) * (+row.qty || 0) - (+row.offerAmount || 0));
+      var oLines = rowLines(row, 'offline');
+      return (linesLabel(oLines)) + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
+        ' \u00B7 ' + inr(sum(oLines, function (l) { return l.qty * l.price; }) - (+row.offerAmount || 0));
     }
     if (collection === 'swiggyOrders') {
+      var sLines = rowLines(row, 'swiggy');
       return (row.orderNo ? '#' + row.orderNo + ' \u00B7 ' : '') +
-        (row.item || '') + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
-        ' \u00B7 ' + inr((+row.sellingPrice || 0) * (+row.qty || 0));
+        (linesLabel(sLines)) + ' \u00B7 ' + dNice(row.date) + ' \u00B7 ' + (row.customer || '\u2014') +
+        ' \u00B7 ' + inr(sum(sLines, function (l) { return l.qty * l.price; }));
     }
     if (collection === 'swiggyPayouts') {
       var r = payoutRange(row);
@@ -615,6 +617,10 @@
     var ok = $('modalOk');
     ok.textContent = opts.confirmText || 'Confirm';
     ok.className = 'btn ' + (opts.confirmClass || 'btn-primary');
+    /* an editor that disables the confirm button until its fields are valid
+       (the order no. and investment editors) must not leave it disabled for the
+       NEXT popup \u2014 nothing else clears this flag, so clear it on every open */
+    ok.disabled = false;
     /* an error notice has nothing to cancel - hide the ghost button */
     $('modalCancel').hidden = !!opts.hideCancel;
     modalConfirmFn = opts.onConfirm || null;
@@ -883,6 +889,120 @@
       });
   }
 
+  /* ------------------------------------------------------- order items edit */
+  /* Change the pizzas on an order: add another, change a qty or a price, or drop
+     one. Same shape as every other row editor \u2014 open a popup, validate, mutate
+     BOTH state.base and state.data with a fresh object per copy, writeAll(), then
+     a ✅ confirmation popup. */
+  var EDITABLE_ITEMS = { offlineOrders: 1, swiggyOrders: 1 };
+
+  function requestItemsEdit(collection, id) {
+    if (!guardWrite()) return;
+    if (!EDITABLE_ITEMS[collection]) return;
+    var row = rawOrderRow(collection, id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var channel = collection === 'swiggyOrders' ? 'swiggy' : 'offline';
+    var before = rowLines(row, channel);
+
+    openModal({
+      tone: 'edit',
+      icon: '\u270F\uFE0F',
+      title: 'Edit the pizzas on this order',
+      message: 'Saving writes the order to the <b>main local file</b>, the <b>2nd local copy</b> and the ' +
+        '<b>repo copy</b>, and the totals, charts and invoice refresh straight away.',
+      detail: '<b>' + esc(COLL_LABEL[collection]) + '</b> \u00B7 ' + esc(describeRow(collection, row)) +
+        '<div class="modal-form">' +
+          '<label>Pizzas on this order</label>' +
+          '<div class="lines-editor" id="itemsEditLines">' +
+            '<div class="lines-body"></div>' +
+            '<div class="lines-foot">' +
+              '<button type="button" class="btn btn-ghost btn-sm line-add">\u2795 Add another pizza</button>' +
+              '<span class="lines-total"></span>' +
+            '</div>' +
+          '</div>' +
+          (channel === 'offline'
+            ? '<div class="modal-form-row"><div><label for="itemsEditOffer">Offer amount (\u20B9) \u00B7 whole order</label>' +
+              '<input type="number" id="itemsEditOffer" min="0" step="1" value="' + (+row.offerAmount || 0) + '"></div></div>'
+            : '') +
+          '<div class="modal-hint">Each pizza prints as its own line on the invoice. The same pizza at the same price is kept as one line.</div>' +
+        '</div>',
+      confirmText: 'Save items',
+      confirmClass: 'btn-primary',
+      onConfirm: function () { applyItemsEdit(collection, id, before); }
+    });
+
+    var root = $('itemsEditLines');
+    renderLinesEditor(root, channel, before);
+    wireLinesEditor(root);
+  }
+
+  /* -> both copies, then all 3 files, then a pop-up confirming the save */
+  function applyItemsEdit(collection, id, before) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow(collection, id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var channel = collection === 'swiggyOrders' ? 'swiggy' : 'offline';
+    var picked = readLinesEditor($('itemsEditLines'));
+    if (!picked.ok) { toast(picked.error, 'err'); return; }
+
+    var after = picked.lines;
+    var offerEl = $('itemsEditOffer');
+    var offer = offerEl ? (parseFloat(offerEl.value) || 0) : null;
+
+    /* nothing changed -> say so rather than writing the files for no reason */
+    var same = after.length === before.length;
+    if (same) {
+      for (var i = 0; i < after.length; i++) {
+        if (after[i].item !== before[i].item || after[i].qty !== before[i].qty ||
+            after[i].price !== before[i].price) { same = false; break; }
+      }
+    }
+    if (same && (offer === null || offer === (+row.offerAmount || 0))) {
+      toast('Nothing changed \u2014 nothing was written.', '');
+      return;
+    }
+
+    var touched = 0;
+    ['base', 'data'].forEach(function (which) {
+      var list = (state[which] && state[which][collection]) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) !== String(id)) continue;
+        if (which === 'base') touched++;
+        /* a fresh object per copy, and fresh line objects \u2014 never share a
+           reference between the two state copies */
+        var next = Object.assign({}, list[i], linesSummary(after, channel), {
+          lines: after.map(function (l) { return { item: l.item, qty: l.qty, price: l.price }; })
+        });
+        if (channel === 'swiggy') next.sellingPrice = after[0].price;
+        else { next.rate = after[0].price; next.offer = offer > 0; next.offerAmount = offer; }
+        list[i] = next;
+      }
+    });
+    if (!touched) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var wasUnits = sum(before, function (l) { return l.qty; });
+    var nowUnits = sum(after, function (l) { return l.qty; });
+    writeAll('Order updated in all 3 files.')
+      .then(function (res) {
+        if (!res || !res.ok) return;
+        renderAll();
+        openModal({
+          tone: 'ok',
+          icon: '\u2705',
+          title: 'Order updated',
+          message: 'Written to the <b>main local file</b>, the <b>2nd local copy</b> and the <b>repo copy</b>. ' +
+            'Commit &amp; push the repo copy to publish it to the live site.',
+          detail: esc(COLL_LABEL[collection]) + ' \u00B7 ' + dNice(row.date) + '<br>' +
+            esc(linesLabel(before)) + ' \u2192 <b>' + esc(linesLabel(after)) + '</b>' +
+            '<br>' + nf(wasUnits) + ' \u2192 <b>' + nf(nowUnits) + '</b> pizza' + (nowUnits === 1 ? '' : 's'),
+          confirmText: 'Done',
+          confirmClass: 'btn-confirm'
+        });
+      });
+  }
+
   /* ------------------------------------------------------- investment edit */
   /* qty, rate and amount are editable together. The amount follows qty x rate
      while you type, but stays editable on its own so a one-off figure can be
@@ -1047,18 +1167,241 @@
     });
   }
 
+  /* ------------------------------------------------------------ order lines */
+  /* An order can hold several pizzas. `row.lines` is the source of truth when it
+     is present; a row WITHOUT it is a single line built from the old flat fields,
+     so every order recorded before this existed keeps reading exactly as before.
+     ALWAYS take money from these helpers \u2014 never multiply row.qty by
+     row.sellingPrice / row.rate again. On a multi-pizza order those two fields are
+     only a summary, so their product is NOT the order's value. */
+  function rowLines(row, kind) {
+    var isSw = kind === 'swiggy';
+    var src = (row && row.lines) || [];
+    var out = [];
+    for (var i = 0; i < src.length; i++) {
+      var l = src[i] || {};
+      var item = String(l.item == null ? '' : l.item);
+      var qty = parseInt(l.qty, 10);
+      if (!(qty > 0)) qty = 1;
+      var price = parseFloat(l.price);
+      if (isNaN(price) || price < 0) price = 0;
+      out.push({ item: item, qty: qty, price: price });
+    }
+    if (!out.length) {
+      var q = parseInt(row && row.qty, 10);
+      out.push({
+        item: (row && row.item) || '',
+        qty: q > 0 ? q : 1,
+        price: isSw ? (+((row && row.sellingPrice) || 0)) : (+((row && row.rate) || 0))
+      });
+    }
+    return out;
+  }
+
+  /* the price column can only show one number, so say so when they differ */
+  function priceVaries(lines) {
+    for (var i = 1; i < lines.length; i++) if (lines[i].price !== lines[0].price) return true;
+    return false;
+  }
+
+  function linesLabel(lines) {
+    if (!lines.length) return '\u2014';
+    if (lines.length === 1) return lines[0].item || '\u2014';
+    return (lines[0].item || '\u2014') + ' +' + (lines.length - 1) + ' more';
+  }
+
+  /* the Item cell lists every pizza on the order. A single-pizza order renders
+     exactly as it always did, so no existing row changes appearance. */
+  function itemsCell(lines) {
+    if (!lines || lines.length <= 1) return esc(lines && lines[0] ? lines[0].item : '');
+    return '<div class="line-list">' + lines.map(function (l) {
+      return '<div class="line-list-row"><span>' + esc(l.item || '\u2014') + '</span>' +
+        '<span class="sub">\u00D7' + nf(l.qty) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  /* there is only one price column, so be honest when the pizzas differ */
+  function priceCell(row) {
+    if (row.priceVaries) {
+      return '<span class="sub" title="the pizzas on this order were priced differently \u2014 open the invoice for the breakdown">varies</span>';
+    }
+    return nf((row.lines && row.lines[0] ? row.lines[0].price : 0));
+  }
+
+  /* ------------------------------------------------------- the lines editor */
+  /* ONE reusable repeater drives the two add panels AND the ✏️ Items editor.
+     render / wire / read all take the same .lines-editor root, so the panel and
+     the modal can never drift apart. */
+  function itemSelectHtml(channel, selected) {
+    var html = '<option value="">Choose an item\u2026</option>';
+    /* an item that is no longer on the menu must stay selectable, otherwise just
+       opening the editor would silently change what was sold */
+    if (selected && !menuIndex(channel)[selected]) {
+      html += '<option value="' + esc(selected) + '" selected>' + esc(selected) + ' (off menu)</option>';
+    }
+    return html + itemOptions(channel, selected);
+  }
+
+  function lineRowHtml(channel, line) {
+    line = line || {};
+    var price = (line.price || line.price === 0) ? line.price : '';
+    var qty = line.qty > 0 ? line.qty : 1;
+    return '<div class="line-edit">' +
+      '<select class="line-item" aria-label="Menu item">' + itemSelectHtml(channel, line.item || '') + '</select>' +
+      '<input type="number" class="line-price" min="0" step="1" placeholder="0" aria-label="Price" value="' + esc(price) + '">' +
+      '<input type="number" class="line-qty" min="1" step="1" aria-label="Quantity" value="' + esc(qty) + '">' +
+      '<button type="button" class="btn btn-ghost btn-sm line-del" title="Remove this pizza">\u2715</button>' +
+      '</div>';
+  }
+
+  function refreshLineDelButtons(root) {
+    var rows = root.querySelectorAll('.line-edit');
+    for (var i = 0; i < rows.length; i++) {
+      var b = rows[i].querySelector('.line-del');
+      if (b) b.hidden = rows.length <= 1;   /* never let an order end up with no pizzas */
+    }
+  }
+
+  function syncLinesTotals(root) {
+    var box = root.querySelector('.lines-total');
+    if (!box) return;
+    var rows = root.querySelectorAll('.line-edit'), picked = 0, units = 0, value = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var p = parseFloat(rows[i].querySelector('.line-price').value);
+      var q = parseInt(rows[i].querySelector('.line-qty').value, 10);
+      if (isNaN(p) || p < 0) p = 0;
+      if (!(q > 0)) q = 0;
+      if (rows[i].querySelector('.line-item').value) picked++;
+      units += q; value += p * q;
+    }
+    box.innerHTML = picked + (picked === 1 ? ' pizza' : ' pizzas') + ' \u00B7 ' + nf(units) +
+      (units === 1 ? ' unit' : ' units') + ' \u00B7 <b>' + inr(value) + '</b>';
+  }
+
+  function renderLinesEditor(root, channel, lines) {
+    if (!root) return;
+    root.dataset.channel = channel;
+    var body = root.querySelector('.lines-body');
+    if (!body) return;
+    var list = (lines && lines.length) ? lines : [{ item: '', price: '', qty: 1 }];
+    body.innerHTML = list.map(function (l) { return lineRowHtml(channel, l); }).join('');
+    refreshLineDelButtons(root);
+    syncLinesTotals(root);
+  }
+
+  function wireLinesEditor(root) {
+    if (!root || root.dataset.wired) return;
+    root.dataset.wired = '1';
+    var body = root.querySelector('.lines-body');
+
+    /* delegated, so rows added later are covered without re-wiring */
+    body.addEventListener('input', function () { syncLinesTotals(root); });
+    body.addEventListener('change', function (e) {
+      var sel = e.target.closest ? e.target.closest('.line-item') : null;
+      if (sel) {
+        var m = menuIndex(root.dataset.channel)[sel.value];
+        /* picking an item fills in the menu price \u2014 still editable, because the
+           exact amount charged can differ */
+        if (m) sel.closest('.line-edit').querySelector('.line-price').value = m.price;
+      }
+      syncLinesTotals(root);
+    });
+    body.addEventListener('click', function (e) {
+      var del = e.target.closest ? e.target.closest('.line-del') : null;
+      if (!del) return;
+      if (body.querySelectorAll('.line-edit').length <= 1) return;
+      del.closest('.line-edit').remove();
+      refreshLineDelButtons(root);
+      syncLinesTotals(root);
+    });
+    root.querySelector('.line-add').addEventListener('click', function () {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = lineRowHtml(root.dataset.channel, { item: '', price: '', qty: 1 });
+      body.appendChild(tmp.firstChild);
+      refreshLineDelButtons(root);
+      syncLinesTotals(root);
+    });
+  }
+
+  /* read the repeater back out WITHOUT validating \u2014 used only to carry a
+     half-typed order across a rebuild of the item dropdowns */
+  function snapshotLines(root) {
+    var rows = root.querySelectorAll('.line-edit');
+    if (!rows.length) return null;
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      out.push({
+        item: rows[i].querySelector('.line-item').value,
+        price: rows[i].querySelector('.line-price').value,
+        qty: rows[i].querySelector('.line-qty').value
+      });
+    }
+    return out;
+  }
+
+  /* read the repeater back out; the first bad row stops it and names itself */
+  function readLinesEditor(root) {
+    var rows = root.querySelectorAll('.line-edit'), out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var item = rows[i].querySelector('.line-item').value;
+      var price = parseFloat(rows[i].querySelector('.line-price').value);
+      var qty = parseInt(rows[i].querySelector('.line-qty').value, 10);
+      if (!item) return { ok: false, error: 'Pizza ' + (i + 1) + ': choose a menu item.' };
+      if (isNaN(price) || price < 0) return { ok: false, error: 'Pizza ' + (i + 1) + ': enter a price of 0 or more.' };
+      if (!(qty > 0)) return { ok: false, error: 'Pizza ' + (i + 1) + ': quantity must be at least 1.' };
+      out.push({ item: item, qty: qty, price: price });
+    }
+    if (!out.length) return { ok: false, error: 'Add at least one pizza.' };
+    /* the same pizza at the same price is one line, not two */
+    var merged = [];
+    out.forEach(function (l) {
+      for (var k = 0; k < merged.length; k++) {
+        if (merged[k].item === l.item && merged[k].price === l.price) { merged[k].qty += l.qty; return; }
+      }
+      merged.push({ item: l.item, qty: l.qty, price: l.price });
+    });
+    return { ok: true, lines: merged };
+  }
+
+  /* the flat fields stay as a summary of the lines, so search, the item filter
+     and anything else that reads row.item still behave sensibly */
+  function linesSummary(lines, channel) {
+    return {
+      item: lines[0].item,
+      sourceItem: lines[0].item,
+      category: resolveCategory(channel, lines[0].item, 'veg'),
+      qty: sum(lines, function (l) { return l.qty; })
+    };
+  }
+
   /* ------------------------------------------------------------ computed rows */
   function offlineRows() {
     var cpp = +settings().costPerPizza || 0;
     return state.data.offlineOrders.map(function (o) {
-      var rate = +o.rate || 0, qty = +o.qty || 0, offer = +o.offerAmount || 0;
-      var amount = rate * qty, final = amount - offer, cost = cpp * qty;
+      var offer = +o.offerAmount || 0;
+      /* each line is classified on its own, so a mixed order still colours every
+         badge and every slice of the category doughnut correctly */
+      var lines = rowLines(o, 'offline').map(function (l) {
+        return Object.assign({}, l, {
+          amount: l.qty * l.price,
+          category: resolveCategory('offline', l.item, o.category)
+        });
+      });
+      var qty = sum(lines, function (l) { return l.qty; });
+      var amount = sum(lines, function (l) { return l.amount; });
+      var final = amount - offer, cost = cpp * qty;
       return Object.assign({}, o, {
-        rate: rate, qty: qty, offer: offer, amount: amount, final: final, cost: cost, profit: final - cost,
+        lines: lines,
+        lineItems: lines.map(function (l) { return l.item; }),
+        lineCats: lines.map(function (l) { return l.category; }),
+        itemLabel: linesLabel(lines),
+        priceVaries: priceVaries(lines),
         /* the menu is the source of truth for the category, so moving an item
            between groups re-colours its table badges and the category charts.
            A deleted item falls back to the category stored on the order. */
-        category: resolveCategory('offline', o.item, o.category)
+        category: resolveCategory('offline', o.item, o.category),
+        rate: lines[0].price, qty: qty, offer: offer,
+        amount: amount, final: final, cost: cost, profit: final - cost
       });
     });
   }
@@ -1068,7 +1411,14 @@
        7-day grid \u2014 never from a hardcoded calendar */
     var periods = weekPeriods();
     return state.data.swiggyOrders.map(function (s) {
-      var price = +s.sellingPrice || 0, qty = +s.qty || 0;
+      var lines = rowLines(s, 'swiggy').map(function (l) {
+        return Object.assign({}, l, {
+          amount: l.qty * l.price,
+          category: resolveCategory('swiggy', l.item, s.category)
+        });
+      });
+      var qty = sum(lines, function (l) { return l.qty; });
+      var gross = sum(lines, function (l) { return l.amount; });
       var w = null;
       if (s.date) {
         for (var i = 0; i < periods.length; i++) {
@@ -1076,7 +1426,12 @@
         }
       }
       return Object.assign({}, s, {
-        sellingPrice: price, qty: qty, gross: price * qty,
+        lines: lines,
+        lineItems: lines.map(function (l) { return l.item; }),
+        lineCats: lines.map(function (l) { return l.category; }),
+        itemLabel: linesLabel(lines),
+        priceVaries: priceVaries(lines),
+        sellingPrice: lines[0].price, qty: qty, gross: gross,
         category: resolveCategory('swiggy', s.item, s.category),
         weekStart: w ? w.start : '', weekEnd: w ? w.end : '',
         week: w, weekSource: w ? w.source : ''
@@ -1113,11 +1468,15 @@
   function pass(row, f) {
     if (f.from && (!row.date || row.date < f.from)) return false;
     if (f.to && (!row.date || row.date > f.to)) return false;
-    if (f.cat && row.category !== f.cat) return false;
-    if (f.item && row.item !== f.item) return false;
+    /* an order matches a type/item filter when ANY of its pizzas does \u2014 a mixed
+       order shows up under both Veg and Non-Veg, which is what you want when you
+       are asking "which orders had a pepperoni?" */
+    if (f.cat && (row.lineCats || [row.category]).indexOf(f.cat) < 0) return false;
+    if (f.item && (row.lineItems || [row.item]).indexOf(f.item) < 0) return false;
     if (f.q) {
-      var hay = ((row.customer || '') + ' ' + (row.item || '') + ' ' + (row.sourceItem || '') +
-        ' ' + (row.orderNo ? '#' + row.orderNo : '') + ' ' + (row.note || '')).toLowerCase();
+      var hay = ((row.customer || '') + ' ' + (row.lineItems || [row.item]).join(' ') +
+        ' ' + (row.sourceItem || '') + ' ' + (row.orderNo ? '#' + row.orderNo : '') +
+        ' ' + (row.note || '')).toLowerCase();
       if (hay.indexOf(f.q.toLowerCase()) < 0) return false;
     }
     return true;
@@ -1316,9 +1675,14 @@
           '" title="Add or change this order\'s Swiggy order number (#XXXX) and save it to all 3 files">' +
           '\u270F\uFE0F Order no.</button>'
       : '';
+    /* the pizzas on an order \u2014 both channels have them, so both get the button */
+    var linesBtn = '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-lines="' + esc(collection) +
+      '" data-id="' + esc(id) + '" title="Change the pizzas on this order: add more, change a quantity or price, or remove one">' +
+      '\u270F\uFE0F Items</button>';
     return '<div class="row-actions">' +
       '<button class="btn btn-ghost btn-sm" data-invoice="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Preview this order as an invoice and download it as PDF or PNG">\uD83E\uDDFE Invoice</button>' +
+      linesBtn +
       orderNoBtn +
       '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-customer="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Edit this order\'s customer name and save it to all 3 files">\u270F\uFE0F Customer</button>' +
@@ -1353,9 +1717,9 @@
           '<td class="mono">' + dNice(r.date) + '</td>' +
           '<td class="mono">' + (r.orderNo ? '#' + esc(r.orderNo) : '<span class="sub">\u2014</span>') + '</td>' +
           '<td>' + esc(r.customer || '\u2014') + '</td>' +
-          '<td>' + esc(r.item) + '</td>' +
+          '<td>' + itemsCell(r.lines) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
-          '<td class="num mono">' + nf(r.sellingPrice) + '</td>' +
+          '<td class="num mono">' + priceCell(r) + '</td>' +
           '<td class="num mono">' + nf(r.qty) + '</td>' +
           '<td class="num mono"><b>' + inr(r.gross) + '</b></td>' +
           '<td>' + (r.week
@@ -1423,9 +1787,9 @@
           '<td class="num mono">' + (i + 1) + '</td>' +
           '<td class="mono">' + dNice(r.date) + '</td>' +
           '<td>' + esc(r.customer || '\u2014') + '</td>' +
-          '<td>' + esc(r.item) + '</td>' +
+          '<td>' + itemsCell(r.lines) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
-          '<td class="num mono">' + nf(r.rate) + '</td>' +
+          '<td class="num mono">' + priceCell(r) + '</td>' +
           '<td class="num mono">' + nf(r.qty) + '</td>' +
           '<td class="num mono">' + nf(r.amount) + '</td>' +
           '<td class="num mono">' + (r.offer ? '<span class="neg">\u2212' + nf(r.offer) + '</span>' : '\u2014') + '</td>' +
@@ -1765,8 +2129,21 @@
     ofSel.innerHTML = '<option value="">All items</option>' + itemOptions('offline', f.offline.item);
     swSel.value = f.swiggy.item; ofSel.value = f.offline.item;
 
-    if (!$('swItemAdd').dataset.ready) { $('swItemAdd').innerHTML = itemOptions('swiggy', ''); $('swItemAdd').dataset.ready = '1'; }
-    if (!$('ofItemAdd').dataset.ready) { $('ofItemAdd').innerHTML = itemOptions('offline', ''); $('ofItemAdd').dataset.ready = '1'; }
+    /* The lines editor is built once and then left alone \u2014 rebuilding it on every
+       renderAll() would wipe a half-typed order. It IS rebuilt when the MENU
+       changes, so an item you just added or moved shows up in the dropdowns
+       without a page reload; whatever is already typed is carried across. */
+    var menuSig = JSON.stringify(state.data.menus);
+    [['swLines', 'swiggy'], ['ofLines', 'offline']].forEach(function (pair) {
+      var root = $(pair[0]);
+      if (!root) return;
+      if (root.dataset.ready && root.dataset.menuSig === menuSig) return;
+      var keep = root.dataset.ready ? snapshotLines(root) : null;
+      renderLinesEditor(root, pair[1], keep);
+      wireLinesEditor(root);
+      root.dataset.ready = '1';
+      root.dataset.menuSig = menuSig;
+    });
   }
 
   /* ------------------------------------------------------------ payout week picker */
@@ -1889,7 +2266,13 @@
     });
 
     var byItem = {};
-    rows.forEach(function (r) { byItem[r.item] = (byItem[r.item] || 0) + r.qty; });
+    /* every pizza on a multi-pizza order counts towards its own item's bar */
+    rows.forEach(function (r) {
+      (r.lines || []).forEach(function (l) {
+        if (!l.item) return;
+        byItem[l.item] = (byItem[l.item] || 0) + l.qty;
+      });
+    });
     var itemKeys = Object.keys(byItem).sort(function (a, b) { return byItem[b] - byItem[a]; }).slice(0, 10);
     var itemColors = itemKeys.map(function (k) {
       var cat = (menuIndex('swiggy')[k] || {}).cat;
@@ -1909,7 +2292,10 @@
     });
 
     var byCat = { veg: 0, nonveg: 0, combo: 0 };
-    rows.forEach(function (r) { byCat[r.category] = (byCat[r.category] || 0) + r.gross; });
+    /* a mixed order is split by pizza, not lumped under one type */
+    rows.forEach(function (r) {
+      (r.lines || []).forEach(function (l) { byCat[l.category] = (byCat[l.category] || 0) + l.amount; });
+    });
     var tot = sum(CAT_ORDER.map(function (c) { return byCat[c]; }));
     chart('swCatChart', {
       type: 'doughnut',
@@ -1977,7 +2363,13 @@
     });
 
     var byItem = {};
-    rows.forEach(function (r) { byItem[r.item] = (byItem[r.item] || 0) + r.qty; });
+    /* every pizza on a multi-pizza order counts towards its own item's bar */
+    rows.forEach(function (r) {
+      (r.lines || []).forEach(function (l) {
+        if (!l.item) return;
+        byItem[l.item] = (byItem[l.item] || 0) + l.qty;
+      });
+    });
     var itemKeys = Object.keys(byItem).sort(function (a, b) { return byItem[b] - byItem[a]; }).slice(0, 10);
     var idx = menuIndex('offline');
     var itemColors = itemKeys.map(function (k) {
@@ -1998,7 +2390,15 @@
     });
 
     var byCat = { veg: 0, nonveg: 0, combo: 0 };
-    rows.forEach(function (r) { byCat[r.category] = (byCat[r.category] || 0) + r.final; });
+    /* the offer belongs to the ORDER, not to one pizza, so spread it across the
+       lines in proportion to their value \u2014 the doughnut total still equals the
+       sum of the orders' final amounts, exactly as before */
+    rows.forEach(function (r) {
+      (r.lines || []).forEach(function (l) {
+        var share = r.amount > 0 ? l.amount / r.amount : 0;
+        byCat[l.category] = (byCat[l.category] || 0) + (l.amount - r.offer * share);
+      });
+    });
     var totalCat = sum(CAT_ORDER.map(function (c) { return byCat[c]; }));
     chart('ofCatChart', {
       type: 'doughnut',
@@ -2411,18 +2811,29 @@
       ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   }
 
-  /* every field of the order, laid out the way the reference receipt reads */
+  /* every field of the order, laid out the way the reference receipt reads.
+     One entry in `items` per pizza, so a multi-pizza order prints as a proper
+     multi-line bill \u2014 the layout already loops over this array. */
   function invoiceModel(kind, row) {
     var isSw = kind === 'swiggy';
-    var qty = +row.qty || 1;
-    var unit = isSw ? (+row.sellingPrice || 0) : (+row.rate || 0);
-    var line = unit * qty;
+    var lines = rowLines(row, kind).map(function (l) {
+      return Object.assign({}, l, {
+        line: l.qty * l.price,
+        cat: resolveCategory(kind, l.item, row.category)
+      });
+    });
+    var qty = sum(lines, function (l) { return l.qty; });
+    var subtotal = sum(lines, function (l) { return l.line; });
     var discount = isSw ? 0 : (+row.offerAmount || 0);
-    var total = isSw ? line : (row.final === undefined ? line - discount : +row.final);
+    var total = isSw ? subtotal : (row.final === undefined ? subtotal - discount : +row.final);
     var ref = invoiceRef(kind, row);
-    var cat = CAT_LABEL[row.category] || '\u2014';
 
-    var totals = [{ k: 'Subtotal', v: inr(line, 2) }];
+    /* a mixed order has no single type, so don't pretend it does */
+    var cats = lines.map(function (l) { return l.cat; });
+    var mixed = cats.some(function (c) { return c !== cats[0]; });
+    var cat = mixed ? 'Mixed' : (CAT_LABEL[cats[0]] || '\u2014');
+
+    var totals = [{ k: 'Subtotal', v: inr(subtotal, 2) }];
     if (discount > 0) totals.push({ k: 'Discount', v: '\u2212' + inr(discount, 2) });
     totals.push({ k: isSw ? 'Total paid' : 'Total', v: inr(total, 2), strong: true });
 
@@ -2444,12 +2855,14 @@
         { k: 'Type', v: cat },
         { k: 'Quantity', v: String(qty) }
       ],
-      items: [{
-        name: (qty > 1 ? qty + ' \u00D7 ' : '') + (row.item || '\u2014'),
-        line: inr(line, 2),
-        sub: inr(unit, 2) + ' each \u00B7 ' + cat +
-          (isSw ? ' \u00B7 paid to Swiggy' : (discount > 0 ? ' \u00B7 offer applied' : ''))
-      }],
+      items: lines.map(function (l) {
+        return {
+          name: (l.qty > 1 ? l.qty + ' \u00D7 ' : '') + (l.item || '\u2014'),
+          line: inr(l.line, 2),
+          sub: inr(l.price, 2) + ' each \u00B7 ' + (CAT_LABEL[l.cat] || '\u2014') +
+            (isSw ? ' \u00B7 paid to Swiggy' : (discount > 0 ? ' \u00B7 offer applied' : ''))
+        };
+      }),
       totals: totals,
       note: row.note || '',
       footer: 'THANK YOU FOR ORDERING WITH US!',
@@ -2539,16 +2952,24 @@
     invRule(ctx, cx, xr, y);
     y += 20;
 
-    var lh = 14.5;
+    /* a multi-pizza order needs more vertical room than a single-pizza one, so
+       tighten the row pitch once the list gets long \u2014 and if the content still
+       overruns, the footer block below is pushed down to make space for it */
+    var many = m.items.length > 6;
+    var lh = many ? 12.5 : 14.5;
+    var subGap = many ? 12 : 14;
+    var rowGap = many ? 19 : 24;
+    var nameSize = many ? 10.8 : 11.6;
+
     m.items.forEach(function (it) {
-      var lines = invWrap(ctx, it.name, cw - 150, 11.6, 700, 2);
+      var lines = invWrap(ctx, it.name, cw - 150, nameSize, 700, 2);
       for (var k = 0; k < lines.length; k++) {
-        invText(ctx, lines[k], cx, y + k * lh, { size: 11.6, weight: 700 });
+        invText(ctx, lines[k], cx, y + k * lh, { size: nameSize, weight: 700 });
       }
-      invText(ctx, it.line, xr, y, { size: 11.6, weight: 700, align: 'right' });
-      var subY = y + (lines.length - 1) * lh + 14;
+      invText(ctx, it.line, xr, y, { size: nameSize, weight: 700, align: 'right' });
+      var subY = y + (lines.length - 1) * lh + subGap;
       invText(ctx, invClip(ctx, it.sub, cw - 150, 9.2, 400), cx, subY, { size: 9.2, color: INV_SOFT });
-      y = subY + 24;
+      y = subY + rowGap;
     });
 
     /* ---- money ---- */
@@ -2801,16 +3222,10 @@
       renderAll();
     });
 
-    /* add: swiggy order */
-    $('swItemAdd').addEventListener('change', function () {
-      var m = menuIndex('swiggy')[this.value];
-      if (m) $('swPriceAdd').value = m.price;
-    });
+    /* add: swiggy order \u2014 one row, as many pizzas as were actually ordered */
     $('swAddBtn').addEventListener('click', function () {
-      var item = $('swItemAdd').value;
-      var m = menuIndex('swiggy')[item] || {};
-      var price = parseFloat($('swPriceAdd').value);
-      if (isNaN(price)) price = +m.price || 0;
+      var picked = readLinesEditor($('swLines'));
+      if (!picked.ok) { toast(picked.error, 'err'); return; }
 
       /* the order number is OPTIONAL — if one is typed it must be # + 4 digits */
       var orderNo = normalizeOrderNo($('swOrderNoAdd').value);
@@ -2820,16 +3235,19 @@
         return;
       }
 
-      addRow('swiggyOrders', {
+      addRow('swiggyOrders', Object.assign(linesSummary(picked.lines, 'swiggy'), {
         id: uid('swg'), date: $('swDateAdd').value || todayISO(),
         orderNo: orderNo.value,
         customer: $('swCustomerAdd').value.trim() || 'Random',
-        item: item, sourceItem: item, category: m.cat || 'veg',
-        sellingPrice: price, qty: parseInt($('swQtyAdd').value, 10) || 1,
+        sellingPrice: picked.lines[0].price,
+        lines: picked.lines,
         note: $('swNoteAdd').value.trim()
-      });
+      }));
+
+      /* clear the form but keep the date \u2014 several orders usually share a day */
       $('swOrderNoAdd').value = '';
-      $('swCustomerAdd').value = ''; $('swNoteAdd').value = ''; $('swQtyAdd').value = 1;
+      $('swCustomerAdd').value = ''; $('swNoteAdd').value = '';
+      renderLinesEditor($('swLines'), 'swiggy', null);
     });
 
     /* add: payout — start day from the calendar, end date derived, overlaps merged */
@@ -2899,26 +3317,21 @@
       updatePayoutEndPreview();
     });
 
-    /* add: offline order */
-    $('ofItemAdd').addEventListener('change', function () {
-      var m = menuIndex('offline')[this.value];
-      if (m) $('ofRateAdd').value = m.price;
-    });
+    /* add: offline order \u2014 one row, as many pizzas as were actually ordered */
     $('ofAddBtn').addEventListener('click', function () {
-      var item = $('ofItemAdd').value;
-      var m = menuIndex('offline')[item] || {};
-      var rate = parseFloat($('ofRateAdd').value);
-      if (isNaN(rate)) rate = +m.price || 0;
-      addRow('offlineOrders', {
+      var picked = readLinesEditor($('ofLines'));
+      if (!picked.ok) { toast(picked.error, 'err'); return; }
+      var offer = parseFloat($('ofOfferAdd').value) || 0;
+      addRow('offlineOrders', Object.assign(linesSummary(picked.lines, 'offline'), {
         id: uid('off'), date: $('ofDateAdd').value || todayISO(),
         customer: $('ofCustomerAdd').value.trim() || 'Walk-in',
-        item: item, sourceItem: item, category: m.cat || 'veg',
-        rate: rate, qty: parseInt($('ofQtyAdd').value, 10) || 1,
-        offer: (parseFloat($('ofOfferAdd').value) || 0) > 0,
-        offerAmount: parseFloat($('ofOfferAdd').value) || 0,
+        rate: picked.lines[0].price,
+        lines: picked.lines,
+        offer: offer > 0, offerAmount: offer,
         note: $('ofNoteAdd').value.trim()
-      });
-      $('ofCustomerAdd').value = ''; $('ofOfferAdd').value = 0; $('ofQtyAdd').value = 1; $('ofNoteAdd').value = '';
+      }));
+      $('ofCustomerAdd').value = ''; $('ofOfferAdd').value = 0; $('ofNoteAdd').value = '';
+      renderLinesEditor($('ofLines'), 'offline', null);
     });
 
     /* add: investment */
@@ -2964,6 +3377,8 @@
       if (ei) { requestInvestmentEdit(ei.dataset.editInvestment); return; }
       var eo = e.target.closest('[data-edit-order-no]');
       if (eo) { requestOrderNoEdit(eo.dataset.editOrderNo); return; }
+      var el = e.target.closest('[data-edit-lines]');
+      if (el) { requestItemsEdit(el.dataset.editLines, el.dataset.id); return; }
       var mv = e.target.closest('[data-menu-move]');
       if (mv) { requestMenuMove(mv.dataset.menuMove, mv.dataset.menuName); return; }
       var dl = e.target.closest('[data-menu-del]');
@@ -3015,9 +3430,8 @@
       if (t.id === 'customerEditInput') { e.preventDefault(); $('modalOk').click(); return; }
       if (/Add$/.test(t.id)) {
         var map = {
-          swCustomerAdd: 'swAddBtn', swPriceAdd: 'swAddBtn', swQtyAdd: 'swAddBtn', swNoteAdd: 'swAddBtn',
-          swOrderNoAdd: 'swAddBtn',
-          ofCustomerAdd: 'ofAddBtn', ofRateAdd: 'ofAddBtn', ofQtyAdd: 'ofAddBtn', ofOfferAdd: 'ofAddBtn', ofNoteAdd: 'ofAddBtn',
+          swCustomerAdd: 'swAddBtn', swNoteAdd: 'swAddBtn', swOrderNoAdd: 'swAddBtn',
+          ofCustomerAdd: 'ofAddBtn', ofOfferAdd: 'ofAddBtn', ofNoteAdd: 'ofAddBtn',
           invItemAdd: 'invAddBtn', invQtyAdd: 'invAddBtn', invRateAdd: 'invAddBtn',
           swpAmount: 'swpAddBtn', swpNote: 'swpAddBtn'
         };

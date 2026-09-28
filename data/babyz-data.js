@@ -4,7 +4,7 @@
 window.BABYZ_DATA = {
   "meta": {
     "version": 1,
-    "updatedAt": "2026-09-27T05:34:53.509Z",
+    "updatedAt": "2026-09-28T18:58:21.768Z",
     "settings": {
       "costPerPizza": 80,
       "applyCostToSwiggy": false
@@ -378,6 +378,36 @@ window.BABYZ_DATA = {
       "offer": false,
       "offerAmount": 0,
       "note": ""
+    },
+    {
+      "item": "Chicken Sausage Pizza",
+      "sourceItem": "Chicken Sausage Pizza",
+      "category": "nonveg",
+      "qty": 3,
+      "id": "off_mulm1pz7e4t5",
+      "date": "2026-09-28",
+      "customer": "3rd Floor KTM Aritra Das",
+      "rate": 180,
+      "lines": [
+        {
+          "item": "Chicken Sausage Pizza",
+          "qty": 1,
+          "price": 180
+        },
+        {
+          "item": "Chicken Pepperoni Pizza",
+          "qty": 1,
+          "price": 180
+        },
+        {
+          "item": "Corn Cheese Delight Pizza",
+          "qty": 1,
+          "price": 150
+        }
+      ],
+      "offer": true,
+      "offerAmount": 50,
+      "note": ""
     }
   ],
   "swiggyOrders": [
@@ -488,6 +518,18 @@ window.BABYZ_DATA = {
       "sourceItem": "Chicken sausage Pizza",
       "category": "nonveg",
       "sellingPrice": 250,
+      "qty": 1,
+      "note": ""
+    },
+    {
+      "id": "swg_mulld730qkkq",
+      "date": "2026-09-28",
+      "orderNo": "9924",
+      "customer": "Random",
+      "item": "Fiery Veg Pizza",
+      "sourceItem": "Fiery Veg Pizza",
+      "category": "veg",
+      "sellingPrice": 219,
       "qty": 1,
       "note": ""
     }

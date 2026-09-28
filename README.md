@@ -136,14 +136,43 @@ with the writer running.
 | Button | Where | What it does |
 |---|---|---|
 | **🧾 Invoice** | every table | previews the order as an invoice; reads only, so it works everywhere |
+| **✏️ Items** | Swiggy + Offline orders | adds, changes or removes the pizzas on that order |
 | **✏️ Order no.** | Swiggy orders | adds or changes that order's `#XXXX` reference |
 | **✏️ Customer** | Swiggy + Offline orders | renames the customer on that order |
 | **✏️ Edit** | Investments | changes **Qty**, **Rate** and **Amount** on that purchase |
 | **Delete** | every table | stages the row for deletion (see the workflow above) |
 
-Both editors save the same way: the corrected row goes to the **main local file**, the
+Every editor saves the same way: the corrected row goes to the **main local file**, the
 **2nd local copy** and the **repo copy** in one go, then every table, total and chart
 refreshes. Commit & push the repo copy to publish the change.
+
+### Ordering more than one pizza
+
+An order can hold **as many pizzas as the customer actually ordered** — both when you
+record a new one and when you correct an existing one.
+
+* The **➕ Add a Swiggy order** and **➕ Add an offline order** panels have a **Pizzas on
+  this order** block instead of a single item/price/qty row. Each line is a menu item, a
+  price and a quantity; **➕ Add another pizza** adds a line and **✕** removes one. The
+  running total under the block shows how many pizzas, how many units and what they come to.
+* **✏️ Items** on any order row opens the very same editor, pre-filled with that order's
+  pizzas — so you can add a forgotten pizza, fix a price or drop a line later.
+* Picking an item fills in the menu price; you can still type the exact amount charged.
+* Each pizza is stored as its own line (`lines: [{ item, qty, price }]`) on **one** row, so
+  an order stays one order. The table's **Item** column lists them stacked, **Qty** is the
+  total units and **Gross**/**Amount** is the sum. When the pizzas were priced differently
+  the **Selling price** / **Rate** column reads **varies** rather than pretending otherwise.
+* **The invoice prints one line per pizza** — a proper multi-line bill, with the subtotal
+  and total for the whole order.
+* **Charts follow the pizzas, not the order.** Each pizza adds to its own bar in *Most
+  popular items*, and to its own slice of the *Veg / Non-Veg / Combo* doughnut — so an order
+  with one veg and one non-veg pizza lands in both.
+* **Filters match any pizza on the order**, so searching or filtering by the second pizza
+  still finds the order.
+* The **offer amount** on an offline order applies to the **whole order**, not to one pizza.
+* **Nothing already recorded changes.** Orders saved before this feature have no `lines`
+  array and are read as a single pizza exactly as before — the table shows them just as it
+  always did, with no stacked list and no "varies".
 
 ### Editing an investment
 
@@ -184,8 +213,10 @@ has its own card with an **➕ Add a menu item** panel and a **Move** / **✕** 
   the dropdowns. *Move to Legacy* is the non-destructive alternative.
 
 **Everything refreshes automatically.** After any add, move or delete the page re-renders in one
-pass — the menu lists, both item dropdowns (filters *and* the add-order forms), the order-table
-category badges, and the item / category charts. The menu is treated as the source of truth for an
+pass — the menu lists, both item dropdowns (filters *and* the pizza lines in the add-order forms),
+the order-table category badges, and the item / category charts. A **half-typed order survives**
+that refresh, so adding a menu item mid-way through recording an order doesn't lose your work.
+The menu is treated as the source of truth for an
 item's category, so moving an item between groups re-colours its badges and re-slices the
 Veg / Non-Veg / Combo doughnut. An item that was **deleted** falls back to the category stored on
 the order itself, so old records never break.
@@ -196,20 +227,24 @@ Menu editing is hidden on the hosted site along with every other write control.
 
 ## How the money is calculated
 
+For an order with a **single pizza** these are exactly the same as they always were. For an
+order with several, each pizza's `price × qty` is worked out on its own and then added up —
+so the table, the KPIs and the charts always agree with the invoice.
+
 **Offline**
 
 ```
-amount       = rate × qty
-final        = amount − offer amount
-food cost    = ₹80 × qty          (configurable in Money Earned → Revenue settings)
+amount       = Σ (line price × line qty)   over every pizza on the order
+final        = amount − offer amount       (the offer belongs to the whole order)
+food cost    = ₹80 × Σ line qty            (configurable in Money Earned → Revenue settings)
 profit       = final − food cost
 ```
 
 **Swiggy**
 
 ```
-gross sales  = selling price × qty        (what the customer paid)
-revenue      = weekly payout you record   (Swiggy's commission is already deducted)
+gross sales  = Σ (line price × line qty)   over every pizza on the order — what the customer paid
+revenue      = weekly payout you record    (Swiggy's commission is already deducted)
 deducted     = gross sales of that week − payout
 deducted %   = deducted ÷ gross sales × 100
 ```
