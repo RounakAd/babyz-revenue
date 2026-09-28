@@ -30,6 +30,27 @@ copy is the only source; locally the writer serves the same repo copy through
 `/api/state`. The only exception is *Undo deletes*, which by design re-reads the
 **main local file** — exactly as intended.
 
+### If a save fails
+
+Each file is written by first saving `<name>.js.tmp`, then renaming it over the real
+file. On Windows a rename needs **delete** permission on the target, so it is refused
+while another program holds that file open — an editor with it in a buffer (Zed,
+VS Code), OneDrive syncing, an antivirus scan, or the Explorer preview pane. The
+refusal shows up as `EPERM`.
+
+The writer handles this in three steps, so a locked file no longer costs you a save:
+
+1. it retries the rename a few times, clearing a read-only attribute if one is set;
+2. if the rename is still refused it **writes the file in place instead** — a plain
+   write only needs write permission, which the lock allows — and logs
+   `[write] rename blocked (EPERM) — wrote … in place instead`;
+3. only if *both* fail does the save report an error, in a popup that stays on screen
+   naming the file and the likely culprit. Nothing is lost in that case: the new data
+   is sitting in the `.tmp` file beside the real one.
+
+> If saving ever does fail, **close the program holding the file** (most often an
+> editor with `babyz-data.js` open) and save again.
+
 ---
 
 ## Everyday workflow
@@ -103,6 +124,41 @@ All data tabs have filters for **date range, menu item, veg / non-veg / combos**
 free-text search. Every date-wise chart regenerates from the data on load, so adding a
 row with a brand-new date immediately creates the new axis point (and a new Swiggy week
 if needed).
+
+---
+
+## Editing a row (local only)
+
+Every table row carries its own actions in the **Actions** column. All of the editing
+buttons are hidden on the hosted site — they only appear when the page is open locally
+with the writer running.
+
+| Button | Where | What it does |
+|---|---|---|
+| **🧾 Invoice** | every table | previews the order as an invoice; reads only, so it works everywhere |
+| **✏️ Order no.** | Swiggy orders | adds or changes that order's `#XXXX` reference |
+| **✏️ Customer** | Swiggy + Offline orders | renames the customer on that order |
+| **✏️ Edit** | Investments | changes **Qty**, **Rate** and **Amount** on that purchase |
+| **Delete** | every table | stages the row for deletion (see the workflow above) |
+
+Both editors save the same way: the corrected row goes to the **main local file**, the
+**2nd local copy** and the **repo copy** in one go, then every table, total and chart
+refreshes. Commit & push the repo copy to publish the change.
+
+### Editing an investment
+
+**✏️ Edit** opens a popup with the three figures side by side:
+
+* **Amount follows `qty × rate`** — change either and the amount updates with it.
+* **Type an amount yourself and it sticks.** From then on the amount is left alone,
+  so a deliberate figure is never silently overwritten by a later qty/rate tweak.
+  The note under the fields tells you when the amount no longer equals `qty × rate`,
+  and shows what that product would be.
+* The **Save figures** button stays disabled until all three fields hold a valid,
+  non-negative number, so a typo can never reach the files.
+
+Swiggy weekly payouts are **not** editable — they have no customer, qty or rate to
+correct. Change those in the source data and re-import.
 
 ---
 
@@ -221,21 +277,34 @@ offline orders have no payout cycle to follow.
 
 ## Order numbers & invoices
 
-### Optional order number (Swiggy orders, local only)
+### Optional order number — `#XXXX` (Swiggy orders, local only)
 
-When you record a Swiggy order there is an **Order no.** field next to the date. It is
-**optional** — leave it blank and nothing changes. When you do use it:
+A Swiggy order can carry an optional reference, always shown as **`#` followed by exactly
+four digits** — `#1234`, `#0042`. You can type it either way: `1234` and `#1234` are both
+accepted, and it is stored on the row as `orderNo` **without** the hash (the hash is added
+back for display).
 
-* it accepts **letters and digits**, plus `-` and `/` (so `8823-AB`, `AB/7` and
-  `1234567890-1234567` all work),
-* spaces and every other symbol are refused with a toast, and the row is **not** added,
-* up to 32 characters,
-* it is stored on the row as `orderNo`, written to all three data files like any other
-  field, shown in the Swiggy master table **Order no.** column, and searchable from the
-  *Search customer / item* box (type an order number and the table filters to it).
+There are two ways to set it:
 
-Orders recorded without one show `—` in that column. The field lives in the add panel,
-which is hidden on the hosted copy, so this is a local-only input by construction.
+| Where | How |
+|---|---|
+| **Add panel** | the **Order no.** field next to the date when recording an order |
+| **Existing row** | the **✏️ Order no.** button in the Actions column of any Swiggy order |
+
+Both do the same thing, and both are **optional** — leave the field blank and nothing
+changes. Anything that is not four digits is refused with a toast; in the row editor the
+**Save** button stays disabled until the value is valid, so a bad number can never reach
+the files.
+
+Clearing the field removes the number from that order (the column then shows `—`).
+
+The value is written to all three data files like any other field, appears in the Swiggy
+master table **Order no.** column, is printed as **Order no.** on that order's invoice, and
+is searchable from the *Search customer / item* box — type `1234` or `#1234` and the table
+filters to it.
+
+Both inputs live behind `.readonly-hide` and re-check the write gate, so they are
+unavailable on the hosted copy by construction.
 
 ### Invoice per order — PDF and PNG
 

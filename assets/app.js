@@ -781,6 +781,257 @@
       });
   }
 
+  /* ------------------------------------------------------- swiggy order no. */
+  /* Adds a number to a row that has none, or changes the one it has. Stored
+     without the hash; the table, describeRow and the invoice all render it as
+     #XXXX. Blank is allowed and removes the number. Same three-file save. */
+  function requestOrderNoEdit(id) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow('swiggyOrders', id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var current = String(row.orderNo || '');
+
+    openModal({
+      tone: 'edit',
+      icon: '\u270F\uFE0F',
+      title: current ? 'Edit the Swiggy order number' : 'Add a Swiggy order number',
+      message: 'Saving writes it to the <b>main local file</b>, the <b>2nd local copy</b> and the ' +
+        '<b>repo copy</b>, and it shows up in the Order no. column and on the invoice straight away.',
+      detail: '<b>' + esc(COLL_LABEL.swiggyOrders) + '</b> \u00B7 ' + esc(row.item || '') + ' \u00B7 ' + dNice(row.date) +
+        '<div class="modal-form"><label for="orderNoEditInput">Order number</label>' +
+        '<input type="text" id="orderNoEditInput" autocomplete="off" spellcheck="false" inputmode="numeric" ' +
+          'maxlength="5" placeholder="#1234" value="' + esc(current ? '#' + current : '') + '">' +
+        '<div class="modal-hint">Format <b>#XXXX</b> \u2014 four digits. Leave it blank to remove the number.</div></div>',
+      confirmText: current ? 'Save number' : 'Add number',
+      confirmClass: 'btn-primary',
+      onConfirm: function () { applyOrderNo(id, current); }
+    });
+
+    var input = $('orderNoEditInput'), ok = $('modalOk');
+    if (!input || !ok) return;
+
+    /* keep the button off while the field is not a valid #XXXX, so a bad number
+       can never reach the files */
+    input.addEventListener('input', function () { ok.disabled = !normalizeOrderNo(input.value).ok; });
+    input.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (!ok.disabled) ok.click();
+    });
+
+    /* openModal focuses the confirm button 40ms after opening, so claim focus
+       back afterwards rather than fighting it */
+    setTimeout(function () { input.focus(); input.select(); }, 60);
+  }
+
+  /* -> both copies, then all 3 files, then a pop-up confirming the save */
+  function applyOrderNo(id, before) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow('swiggyOrders', id);
+    if (!row) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var input = $('orderNoEditInput');
+    if (!input) return;
+    var norm = normalizeOrderNo(input.value);
+    if (!norm.ok) {
+      toast('Order no. must be # followed by exactly 4 digits (e.g. #1234) \u2014 or leave it blank.', 'err');
+      return;
+    }
+    var after = norm.value;
+
+    if (after === before) {
+      toast('Order number unchanged \u2014 nothing was written.', '');
+      return;
+    }
+
+    /* state.base is what gets written to the files, state.data is what renders.
+       Mutating only one of them either saves nothing or shows nothing. */
+    var touched = 0;
+    ['base', 'data'].forEach(function (which) {
+      var list = (state[which] && state[which].swiggyOrders) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) !== String(id)) continue;
+        if (which === 'base') touched++;
+        var next = Object.assign({}, list[i]);   /* a fresh object per copy, never shared */
+        next.orderNo = after;
+        list[i] = next;
+      }
+    });
+    if (!touched) { toast('That order is not in the loaded data any more.', 'err'); return; }
+
+    var was = before ? '#' + before : '(none)';
+    var now = after ? '#' + after : '(none)';
+    writeAll(after
+        ? 'Order number saved to all 3 files: ' + now + '.'
+        : 'Order number removed from all 3 files.')
+      .then(function (res) {
+        if (res && res.ok) {
+          renderAll();
+          openModal({
+            tone: 'ok',
+            icon: '\u2705',
+            title: after ? 'Order number saved' : 'Order number removed',
+            message: 'Written to the <b>main local file</b>, the <b>2nd local copy</b> and the <b>repo copy</b>. ' +
+              'Commit &amp; push the repo copy to publish it to the live site.',
+            detail: esc(COLL_LABEL.swiggyOrders) + ' \u00B7 ' + esc(row.item || '') + ' \u00B7 ' + dNice(row.date) +
+              '<br>' + esc(was) + ' \u2192 <b>' + esc(now) + '</b>',
+            confirmText: 'Done',
+            confirmClass: 'btn-confirm'
+          });
+        }
+      });
+  }
+
+  /* ------------------------------------------------------- investment edit */
+  /* qty, rate and amount are editable together. The amount follows qty x rate
+     while you type, but stays editable on its own so a one-off figure can be
+     entered directly (e.g. a round-numbered bill). Same three-file save as
+     every other edit: both state copies, then /api/rows, then a confirmation. */
+  function requestInvestmentEdit(id) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow('investments', id);
+    if (!row) { toast('That investment is not in the loaded data any more.', 'err'); return; }
+
+    var before = { qty: +row.qty || 0, rate: +row.rate || 0, amount: +row.amount || 0 };
+
+    openModal({
+      tone: 'edit',
+      icon: '\u270F\uFE0F',
+      title: 'Edit this investment',
+      message: 'Saving writes the new figures to the <b>main local file</b>, the <b>2nd local copy</b> and the ' +
+        '<b>repo copy</b>, and every table and total refreshes straight away.',
+      detail: '<b>' + esc(row.item || '') + '</b> \u00B7 ' + dNice(row.date) +
+        '<div class="modal-form"><div class="modal-form-row">' +
+          '<div><label for="invEditQty">Qty</label>' +
+            '<input type="number" id="invEditQty" min="0" step="any" value="' + before.qty + '"></div>' +
+          '<div><label for="invEditRate">Rate (\u20B9)</label>' +
+            '<input type="number" id="invEditRate" min="0" step="any" value="' + before.rate + '"></div>' +
+          '<div><label for="invEditAmount">Amount (\u20B9)</label>' +
+            '<input type="number" id="invEditAmount" min="0" step="any" value="' + before.amount + '"></div>' +
+        '</div><div class="modal-hint">Amount follows qty \u00D7 rate: change either and the amount updates with it.</div></div>',
+      confirmText: 'Save figures',
+      confirmClass: 'btn-primary',
+      onConfirm: function () { applyInvestmentEdit(id, before); }
+    });
+
+    var qtyEl = $('invEditQty'), rateEl = $('invEditRate'), amtEl = $('invEditAmount'), ok = $('modalOk');
+    var hintEl = document.querySelector('#modalBackdrop .modal-hint');
+    if (!qtyEl || !rateEl || !amtEl || !ok) return;
+
+    /* Once the amount is typed by hand we stop recomputing it, so a deliberate
+       figure is never silently thrown away by a later qty/rate tweak. The hint
+       under the fields keeps the qty x rate relationship visible either way. */
+    var amountTyped = false;
+
+    function readNum(el) {
+      var raw = String(el.value).trim();
+      if (raw === '') return NaN;
+      var n = Number(raw);
+      return isFinite(n) ? n : NaN;
+    }
+    function money(n) { return inr(n, Number.isInteger(n) ? 0 : 2); }
+    /* keep the confirm button off until all three fields hold a usable number,
+       so a typo can never be written to the files */
+    function refresh() {
+      var q = readNum(qtyEl), r = readNum(rateEl), a = readNum(amtEl);
+      ok.disabled = !(isFinite(q) && isFinite(r) && isFinite(a)) || q < 0 || r < 0 || a < 0;
+      if (!hintEl) return;
+      var expected = (isFinite(q) && isFinite(r)) ? +(q * r).toFixed(2) : null;
+      hintEl.innerHTML = (expected !== null && isFinite(a) && a !== expected)
+        ? 'Amount differs from qty \u00D7 rate (' + esc(money(expected)) + ') \u2014 it will be saved exactly as typed.'
+        : 'Amount follows qty \u00D7 rate: change either and the amount updates with it.';
+    }
+    function recalc() {
+      if (!amountTyped) {
+        var q = readNum(qtyEl), r = readNum(rateEl);
+        if (isFinite(q) && isFinite(r)) amtEl.value = String(+(q * r).toFixed(2));
+      }
+      refresh();
+    }
+
+    qtyEl.addEventListener('input', recalc);
+    rateEl.addEventListener('input', recalc);
+    amtEl.addEventListener('input', function () { amountTyped = true; refresh(); });
+    [qtyEl, rateEl, amtEl].forEach(function (el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (!ok.disabled) ok.click();
+      });
+    });
+    refresh();
+
+    /* openModal focuses the confirm button 40ms after opening, so claim focus
+       back afterwards rather than fighting it */
+    setTimeout(function () { qtyEl.focus(); qtyEl.select(); }, 60);
+  }
+
+  /* -> both copies, then all 3 files, then a pop-up confirming the save */
+  function applyInvestmentEdit(id, before) {
+    if (!guardWrite()) return;
+    var row = rawOrderRow('investments', id);
+    if (!row) { toast('That investment is not in the loaded data any more.', 'err'); return; }
+
+    var qtyEl = $('invEditQty'), rateEl = $('invEditRate'), amtEl = $('invEditAmount');
+    if (!qtyEl || !rateEl || !amtEl) return;
+
+    var qty = Number(String(qtyEl.value).trim());
+    var rate = Number(String(rateEl.value).trim());
+    var amount = Number(String(amtEl.value).trim());
+    if (!isFinite(qty) || !isFinite(rate) || !isFinite(amount)) {
+      toast('Qty, rate and amount must all be numbers.', 'err');
+      return;
+    }
+    if (qty < 0 || rate < 0 || amount < 0) {
+      toast('Qty, rate and amount cannot be negative.', 'err');
+      return;
+    }
+    amount = +amount.toFixed(2);
+
+    if (qty === before.qty && rate === before.rate && amount === before.amount) {
+      toast('Nothing changed \u2014 nothing was written.', '');
+      return;
+    }
+
+    /* state.base is what gets written to the files, state.data is what renders.
+       Mutating only one of them either saves nothing or shows nothing. */
+    var touched = 0;
+    ['base', 'data'].forEach(function (which) {
+      var list = (state[which] && state[which].investments) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) !== String(id)) continue;
+        if (which === 'base') touched++;
+        var next = Object.assign({}, list[i]);   /* a fresh object per copy, never shared */
+        next.qty = qty;
+        next.rate = rate;
+        next.amount = amount;
+        list[i] = next;
+      }
+    });
+    if (!touched) { toast('That investment is not in the loaded data any more.', 'err'); return; }
+
+    writeAll('Investment figures saved to all 3 files.')
+      .then(function (res) {
+        if (res && res.ok) {
+          renderAll();
+          openModal({
+            tone: 'ok',
+            icon: '\u2705',
+            title: 'Investment saved',
+            message: 'Written to the <b>main local file</b>, the <b>2nd local copy</b> and the <b>repo copy</b>. ' +
+              'Commit &amp; push the repo copy to publish it to the live site.',
+            detail: esc(row.item || '') + ' \u00B7 ' + dNice(row.date) +
+              '<br>Qty ' + nf(before.qty) + ' \u2192 <b>' + nf(qty) + '</b>' +
+              '<br>Rate ' + inr(before.rate) + ' \u2192 <b>' + inr(rate) + '</b>' +
+              '<br>Amount ' + inr(before.amount) + ' \u2192 <b>' + inr(amount) + '</b>',
+            confirmText: 'Done',
+            confirmClass: 'btn-confirm'
+          });
+        }
+      });
+  }
+
   function requestUndo() {
     var n = state.pending.length;
     if (!n) return;
@@ -866,7 +1117,7 @@
     if (f.item && row.item !== f.item) return false;
     if (f.q) {
       var hay = ((row.customer || '') + ' ' + (row.item || '') + ' ' + (row.sourceItem || '') +
-        ' ' + (row.orderNo || '') + ' ' + (row.note || '')).toLowerCase();
+        ' ' + (row.orderNo ? '#' + row.orderNo : '') + ' ' + (row.note || '')).toLowerCase();
       if (hay.indexOf(f.q.toLowerCase()) < 0) return false;
     }
     return true;
@@ -1058,9 +1309,17 @@
      appear on a page that is allowed to write. Both carry .readonly-hide and
      both handlers re-check guardWrite(), because the CSS alone protects nothing. */
   function actionsCell(collection, id) {
+    /* the order number only exists on Swiggy orders — invoiceRef() ignores it
+       for offline ones — so the button is rendered for that channel alone */
+    var orderNoBtn = collection === 'swiggyOrders'
+      ? '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-order-no="' + esc(id) +
+          '" title="Add or change this order\'s Swiggy order number (#XXXX) and save it to all 3 files">' +
+          '\u270F\uFE0F Order no.</button>'
+      : '';
     return '<div class="row-actions">' +
       '<button class="btn btn-ghost btn-sm" data-invoice="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Preview this order as an invoice and download it as PDF or PNG">\uD83E\uDDFE Invoice</button>' +
+      orderNoBtn +
       '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-customer="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Edit this order\'s customer name and save it to all 3 files">\u270F\uFE0F Customer</button>' +
       '<button class="btn btn-danger readonly-hide" data-del="' + esc(collection) + '" data-id="' + esc(id) +
@@ -1092,7 +1351,7 @@
         return '<tr>' +
           '<td class="num mono">' + (i + 1) + '</td>' +
           '<td class="mono">' + dNice(r.date) + '</td>' +
-          '<td class="mono">' + (r.orderNo ? esc(r.orderNo) : '<span class="sub">\u2014</span>') + '</td>' +
+          '<td class="mono">' + (r.orderNo ? '#' + esc(r.orderNo) : '<span class="sub">\u2014</span>') + '</td>' +
           '<td>' + esc(r.customer || '\u2014') + '</td>' +
           '<td>' + esc(r.item) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
@@ -1205,7 +1464,11 @@
         '<td class="num mono">' + nf(r.qty) + '</td>' +
         '<td class="num mono">' + nf(r.rate) + '</td>' +
         '<td class="num mono"><b>' + inr(r.amount) + '</b></td>' +
-        '<td class="actions readonly-hide"><button class="btn btn-danger" data-del="investments" data-id="' + esc(r.id) + '">Delete</button></td>' +
+        '<td class="actions readonly-hide">' +
+          '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-investment="' + esc(r.id) +
+            '" title="Edit this investment\'s quantity, rate and amount and save them to all 3 files">\u270F\uFE0F Edit</button>' +
+          '<button class="btn btn-danger" data-del="investments" data-id="' + esc(r.id) + '">Delete</button>' +
+        '</td>' +
         '</tr>';
     }).join('');
     foot.innerHTML = '<tr><td colspan="6">Total invested</td>' +
@@ -1903,15 +2166,16 @@
   }
 
   /* ============================================================ order no. ==
-     An OPTIONAL, alphanumeric reference you type when recording a Swiggy
-     order (order IDs, ticket numbers, whatever the app shows you). It is
-     stored on the row as `orderNo`, shown in the master table and printed on
-     the invoice. Letters, digits, "-" and "/" only \u2014 no spaces. */
+     An OPTIONAL Swiggy reference, shown everywhere as #XXXX — the hash plus
+     exactly four digits. It is stored on the row as `orderNo` WITHOUT the hash
+     (the hash is a display prefix, added by the table, describeRow and the
+     invoice), shown in the master table's "Order no." column, and printed on
+     the invoice. Blank is allowed and means "no number". */
   function normalizeOrderNo(raw) {
     var s = String(raw === undefined || raw === null ? '' : raw).trim().replace(/\s+/g, '');
+    if (s.charAt(0) === '#') s = s.slice(1);
     if (!s) return { ok: true, value: '' };                       /* optional */
-    if (s.length > 32) s = s.slice(0, 32);
-    if (!/^[A-Za-z0-9][A-Za-z0-9\-\/]*$/.test(s)) return { ok: false, value: s };
+    if (!/^\d{4}$/.test(s)) return { ok: false, value: s };
     return { ok: true, value: s };
   }
 
@@ -2138,7 +2402,7 @@
   /* ------------------------------------------------------------- the model */
   function invoiceRef(kind, row) {
     var typed = kind === 'swiggy' ? (row.orderNo || '') : '';
-    return String(typed || row.id || '');
+    return String(typed ? '#' + typed : (row.id || ''));
   }
 
   function invStamp() {
@@ -2548,10 +2812,10 @@
       var price = parseFloat($('swPriceAdd').value);
       if (isNaN(price)) price = +m.price || 0;
 
-      /* the order number is OPTIONAL — if one is typed it must be alphanumeric */
+      /* the order number is OPTIONAL — if one is typed it must be # + 4 digits */
       var orderNo = normalizeOrderNo($('swOrderNoAdd').value);
       if (!orderNo.ok) {
-        toast('Order no. can only use letters, digits, "-" and "/" \u2014 no spaces or other symbols.', 'err');
+        toast('Order no. must be # followed by exactly 4 digits (e.g. #1234) \u2014 or leave it blank.', 'err');
         $('swOrderNoAdd').focus();
         return;
       }
@@ -2696,6 +2960,10 @@
       if (!e.target.closest) return;
       var ec = e.target.closest('[data-edit-customer]');
       if (ec) { requestCustomerEdit(ec.dataset.editCustomer, ec.dataset.id); return; }
+      var ei = e.target.closest('[data-edit-investment]');
+      if (ei) { requestInvestmentEdit(ei.dataset.editInvestment); return; }
+      var eo = e.target.closest('[data-edit-order-no]');
+      if (eo) { requestOrderNoEdit(eo.dataset.editOrderNo); return; }
       var mv = e.target.closest('[data-menu-move]');
       if (mv) { requestMenuMove(mv.dataset.menuMove, mv.dataset.menuName); return; }
       var dl = e.target.closest('[data-menu-del]');

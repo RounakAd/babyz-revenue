@@ -52,10 +52,30 @@ to the category stored on the order, so history never breaks. `legacy` items kee
 
 ## Row actions
 `actionsCell(collection, id)` renders 🧾 Invoice (works everywhere, it only reads) plus
-✏️ Customer and Delete, both `readonly-hide`. Handlers are **delegated on `document`** in
-`wireEvents()` and keyed off `data-edit-customer` / `data-del` / `data-invoice`. Renaming a
-customer is allowed on `offlineOrders` and `swiggyOrders` only — payouts and investments have
-no customer field.
+✏️ Customer and Delete, both `readonly-hide`. It is used **only by the Swiggy and Offline
+tables** — the payouts and investments tables build their own action cells inline, so new
+buttons for those go there, not in `actionsCell`. Handlers are **delegated on `document`** in
+`wireEvents()` and keyed off `data-edit-customer` / `data-edit-investment` / `data-del` /
+`data-invoice`. Renaming a customer is allowed on `offlineOrders` and `swiggyOrders` only —
+payouts and investments have no customer field.
+
+**Every row editor follows the same shape** (`requestXEdit` → `applyXEdit`, as in
+`requestCustomerEdit` / `requestInvestmentEdit`): open a popup, validate, mutate **both**
+`state.base` and `state.data` pushing a **fresh object per copy**, then `writeAll(msg)` — the
+same `/api/rows` path an add uses — then `renderAll()` and a ✅ confirmation popup. Reuse it.
+
+`✏️ Edit` on investments changes qty / rate / amount together. **The amount follows `qty × rate`
+only until the user types in the amount field** (`amountTyped` flag); after that qty/rate
+changes must not overwrite it — silently discarding a typed figure is the bug to avoid. The
+`.modal-hint` line always states which rule is in force, including the expected `qty × rate`
+when they differ.
+
+`✏️ Order no.` on Swiggy rows is the same shape. The order number is **`#` + exactly 4 digits**
+(`normalizeOrderNo`: `#` optional on input, `1234` and `#1234` both accepted) and is **stored
+WITHOUT the hash** — `orderNo: "1234"`. The `#` is added back at the display points only: the
+table cell, the search haystack, `invoiceRef`, and the invoice's `Order no.` line. Blank is valid
+and removes the number. Both the add-panel field and the row editor go through the one
+`normalizeOrderNo`, so the two paths can never drift.
 
 ## Gotchas that have already bitten
 * `baseOpts(extra)` is a **shallow** `Object.assign` — passing `plugins` replaces the whole default
@@ -96,3 +116,7 @@ API (`rstrtmgr.dll`: `RmStartSession` → `RmRegisterResources` → `RmGetList`)
 
 A failed write must be **loud**: the client shows it in the modal via `saveFailed(what, res)`,
 never a 3.6 s toast.
+
+**There is no conflict detection.** `writeAll` posts `state.base` wholesale, so a save from a
+tab holding older data silently overwrites newer on-disk data — a stale tab can undo a recovery.
+After changing the data files behind the app's back, tell the user to **reload** before saving.
