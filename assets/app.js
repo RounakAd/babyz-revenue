@@ -1663,29 +1663,48 @@
   }
 
   /* ------------------------------------------------------------ tables */
-  /* one row's controls: the invoice is available everywhere (the hosted copy
-     included \u2014 it only reads the row), the rename and delete buttons only ever
-     appear on a page that is allowed to write. Both carry .readonly-hide and
-     both handlers re-check guardWrite(), because the CSS alone protects nothing. */
+  /* The per-row editing controls are pencils that live INSIDE the cell holding the
+     value they change, so the Actions column keeps only the invoice and the delete
+     and a row does not stretch across the screen. Each pencil carries
+     .readonly-hide and its handler re-checks guardWrite(), because the CSS alone
+     protects nothing. */
+  function pencil(attrs, title) {
+    return '<button type="button" class="pencil readonly-hide" ' + attrs +
+      ' title="' + esc(title) + '" aria-label="' + esc(title) + '">\u270F\uFE0F</button>';
+  }
+
+  /* the value, then its pencil, in one flex row */
+  function cellEdit(valueHtml, pencilHtml) {
+    return '<div class="cell-edit">' + valueHtml + pencilHtml + '</div>';
+  }
+
+  function customerCell(collection, row) {
+    return cellEdit(esc(row.customer || '\u2014'),
+      pencil('data-edit-customer="' + esc(collection) + '" data-id="' + esc(row.id) + '"',
+        'Edit the customer name and save it to all 3 files'));
+  }
+
+  /* the order number only exists on Swiggy orders, so only that channel gets one */
+  function orderNoCell(id, orderNo) {
+    return cellEdit('<span class="mono">' + (orderNo ? '#' + esc(orderNo) : '<span class="sub">\u2014</span>') + '</span>',
+      pencil('data-edit-order-no="' + esc(id) + '"',
+        'Add or change this order\'s Swiggy order number (#XXXX) and save it to all 3 files'));
+  }
+
+  /* the pizzas on an order \u2014 both channels have them, so both get the pencil */
+  function itemCell(collection, row) {
+    return cellEdit(itemsCell(row.lines),
+      pencil('data-edit-lines="' + esc(collection) + '" data-id="' + esc(row.id) + '"',
+        'Change the pizzas on this order: add more, change a quantity or price, or remove one'));
+  }
+
+  /* what is left of a row's controls once the pencils moved into the cells: the
+     invoice is available everywhere (the hosted copy included \u2014 it only reads the
+     row), the delete button only ever appears on a page allowed to write */
   function actionsCell(collection, id) {
-    /* the order number only exists on Swiggy orders — invoiceRef() ignores it
-       for offline ones — so the button is rendered for that channel alone */
-    var orderNoBtn = collection === 'swiggyOrders'
-      ? '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-order-no="' + esc(id) +
-          '" title="Add or change this order\'s Swiggy order number (#XXXX) and save it to all 3 files">' +
-          '\u270F\uFE0F Order no.</button>'
-      : '';
-    /* the pizzas on an order \u2014 both channels have them, so both get the button */
-    var linesBtn = '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-lines="' + esc(collection) +
-      '" data-id="' + esc(id) + '" title="Change the pizzas on this order: add more, change a quantity or price, or remove one">' +
-      '\u270F\uFE0F Items</button>';
     return '<div class="row-actions">' +
       '<button class="btn btn-ghost btn-sm" data-invoice="' + esc(collection) + '" data-id="' + esc(id) +
         '" title="Preview this order as an invoice and download it as PDF or PNG">\uD83E\uDDFE Invoice</button>' +
-      linesBtn +
-      orderNoBtn +
-      '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-customer="' + esc(collection) + '" data-id="' + esc(id) +
-        '" title="Edit this order\'s customer name and save it to all 3 files">\u270F\uFE0F Customer</button>' +
       '<button class="btn btn-danger readonly-hide" data-del="' + esc(collection) + '" data-id="' + esc(id) +
         '">Delete</button>' +
       '</div>';
@@ -1715,9 +1734,9 @@
         return '<tr>' +
           '<td class="num mono">' + (i + 1) + '</td>' +
           '<td class="mono">' + dNice(r.date) + '</td>' +
-          '<td class="mono">' + (r.orderNo ? '#' + esc(r.orderNo) : '<span class="sub">\u2014</span>') + '</td>' +
-          '<td>' + esc(r.customer || '\u2014') + '</td>' +
-          '<td>' + itemsCell(r.lines) + '</td>' +
+          '<td>' + orderNoCell(r.id, r.orderNo) + '</td>' +
+          '<td>' + customerCell('swiggyOrders', r) + '</td>' +
+          '<td>' + itemCell('swiggyOrders', r) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
           '<td class="num mono">' + priceCell(r) + '</td>' +
           '<td class="num mono">' + nf(r.qty) + '</td>' +
@@ -1786,8 +1805,8 @@
         return '<tr>' +
           '<td class="num mono">' + (i + 1) + '</td>' +
           '<td class="mono">' + dNice(r.date) + '</td>' +
-          '<td>' + esc(r.customer || '\u2014') + '</td>' +
-          '<td>' + itemsCell(r.lines) + '</td>' +
+          '<td>' + customerCell('offlineOrders', r) + '</td>' +
+          '<td>' + itemCell('offlineOrders', r) + '</td>' +
           '<td>' + catBadge(r.category) + '</td>' +
           '<td class="num mono">' + priceCell(r) + '</td>' +
           '<td class="num mono">' + nf(r.qty) + '</td>' +
@@ -1828,11 +1847,13 @@
         '<td class="num mono">' + nf(r.qty) + '</td>' +
         '<td class="num mono">' + nf(r.rate) + '</td>' +
         '<td class="num mono"><b>' + inr(r.amount) + '</b></td>' +
-        '<td class="actions readonly-hide">' +
-          '<button class="btn btn-ghost btn-sm readonly-hide" data-edit-investment="' + esc(r.id) +
-            '" title="Edit this investment\'s quantity, rate and amount and save them to all 3 files">\u270F\uFE0F Edit</button>' +
+        '<td class="actions readonly-hide"><div class="row-actions">' +
+          /* the investment editor changes three adjacent columns at once, so there
+             is no single cell to sit beside \u2014 the pencil stays in Actions */
+          pencil('data-edit-investment="' + esc(r.id) + '"',
+            'Edit this investment\'s quantity, rate and amount and save them to all 3 files') +
           '<button class="btn btn-danger" data-del="investments" data-id="' + esc(r.id) + '">Delete</button>' +
-        '</td>' +
+        '</div></td>' +
         '</tr>';
     }).join('');
     foot.innerHTML = '<tr><td colspan="6">Total invested</td>' +
@@ -2805,10 +2826,12 @@
     return String(typed ? '#' + typed : (row.id || ''));
   }
 
-  function invStamp() {
-    var d = new Date();
-    return 'Generated ' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
-      ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  /* The invoice's generated date IS the order's date. An order records a date but
+     never a time, so no clock time is printed \u2014 it would be today's, which would
+     contradict the date sitting next to it. dNice() keeps this line reading
+     exactly like the Date field higher up the invoice. */
+  function invStamp(date) {
+    return 'Generated ' + dNice(date);
   }
 
   /* every field of the order, laid out the way the reference receipt reads.
@@ -2868,7 +2891,7 @@
       footer: 'THANK YOU FOR ORDERING WITH US!',
       barcode: ref,
       stamp: (state.data.meta.business || 'Babyz Pizza') + ' \u00B7 ' +
-        (state.data.meta.channel || '') + ' \u00B7 ' + invStamp()
+        (state.data.meta.channel || '') + ' \u00B7 ' + invStamp(row.date)
     };
   }
 

@@ -50,14 +50,23 @@ The menu is the **source of truth for an item's category** (`resolveCategory`), 
 between groups re-colours its table badges and re-slices the doughnut. A **deleted** item falls back
 to the category stored on the order, so history never breaks. `legacy` items keep a `category`.
 
-## Row actions
-`actionsCell(collection, id)` renders 🧾 Invoice (works everywhere, it only reads) plus
-✏️ Customer and Delete, both `readonly-hide`. It is used **only by the Swiggy and Offline
-tables** — the payouts and investments tables build their own action cells inline, so new
-buttons for those go there, not in `actionsCell`. Handlers are **delegated on `document`** in
-`wireEvents()` and keyed off `data-edit-customer` / `data-edit-investment` / `data-del` /
-`data-invoice`. Renaming a customer is allowed on `offlineOrders` and `swiggyOrders` only —
-payouts and investments have no customer field.
+## Row actions — pencils live IN the cell, not in Actions
+`actionsCell(collection, id)` renders only **🧾 Invoice** (works everywhere, it only reads) and
+**Delete** (`readonly-hide`). Every other editing control is a **pencil sitting inside the cell
+holding the value it changes**, built by `customerCell()` / `orderNoCell()` / `itemCell()` via
+`cellEdit(value, pencil)` and `pencil(attrs, title)`. Keeping the pencils in the cells is what
+stops a row stretching — the Actions column went 461px → 173px and the Swiggy table 1711px →
+1487px. **Do not add another text button to `actionsCell`.**
+
+`actionsCell` is used **only by the Swiggy and Offline tables** — the payouts and investments
+tables build their own action cells inline, so new controls for those go there. The investments
+pencil stays **in its Actions cell** because that editor changes three adjacent columns
+(Qty/Rate/Amount) at once, so there is no single cell to sit beside.
+
+Handlers are **delegated on `document`** in `wireEvents()` and keyed off `data-edit-customer` /
+`data-edit-lines` / `data-edit-order-no` / `data-edit-investment` / `data-del` / `data-invoice`.
+Renaming a customer is allowed on `offlineOrders` and `swiggyOrders` only — payouts and
+investments have no customer field.
 
 **Every row editor follows the same shape** (`requestXEdit` → `applyXEdit`, as in
 `requestCustomerEdit` / `requestInvestmentEdit`): open a popup, validate, mutate **both**
@@ -111,6 +120,14 @@ order whose item was deleted cannot silently change what was sold.
 `renderFilters` rebuilds the add-panel editors only when `JSON.stringify(state.data.menus)`
 changes — never on every `renderAll()`, which would wipe a half-typed order.
 
+## The invoice
+`invStamp(row.date)` prints `Generated <order date>` — **the order's own date, never today's**.
+An order records a date but never a time, so no clock time is printed; showing today's time
+beside the order's date would contradict it. It reuses `dNice()` so the stamp reads exactly like
+the invoice's own `Date` field. The invoice is drawn only **after** `withInvoiceLogo()` resolves
+(`assets/logo.js` sets `window.BABYZ_LOGO`, then `new Image().onload`) — anything that tests the
+invoice must satisfy that or it never draws.
+
 ## Gotchas that have already bitten
 * `baseOpts(extra)` is a **shallow** `Object.assign` — passing `plugins` replaces the whole default
   plugins object and silently drops the legend styling. Re-declare `legend` when you override it.
@@ -121,6 +138,11 @@ changes — never on every `renderAll()`, which would wipe a half-typed order.
   `assets/styles.css` yourself, because jsdom will not fetch the `<link>`, so the cascade (and
   therefore `body.is-live .readonly-hide`) is silently untested.
 * A `<canvas>` has no DOM children — read chart state via `Chart.getChart(el)`.
+* `.wrap` is capped at `max-width:1500px` with 24px padding, so a table's container is **1416px**.
+  The Swiggy table's min-content is **1487px**, so it scrolls horizontally by 71px *at any window
+  size* and Delete sits at the end of that scroll. The floor is `thead th { white-space: nowrap }`
+  plus the long item names. Pre-existing; fixing it needs a design call (wrap the two-word
+  headers, trim `th` padding, or icon-ise Invoice).
 * Verify writes against the **files/API**, not just the DOM. See the browser-visual-audit skill,
   pitfalls 16 and 17.
 

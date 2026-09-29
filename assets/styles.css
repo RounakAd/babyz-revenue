@@ -411,12 +411,17 @@ thead th {
   letter-spacing: .8px;
   text-transform: uppercase;
   font-weight: 800;
-  padding: 10px 12px;
+  padding: 10px 9px;
   border-bottom: 1.5px solid var(--orange-200);
-  white-space: nowrap;
+  /* Headers WRAP, data cells do not. Every data cell below is nowrap on purpose, so
+     the header labels were setting the table's minimum width all by themselves: with
+     11 columns "SELLING PRICE" and "ORDER NO." alone pushed the Swiggy table ~70px
+     past its container and scrolled the Actions column out of reach. Two-word labels
+     wrapping to two lines costs a little header height and buys the width back. */
+  white-space: normal;
 }
 tbody td {
-  padding: 9px 12px;
+  padding: 9px 9px;
   border-bottom: 1px solid var(--ink-100);
   vertical-align: middle;
   white-space: nowrap;
@@ -426,7 +431,7 @@ tbody tr:hover { background: var(--orange-50); }
 tbody tr.total-row { background: var(--green-50) !important; font-weight: 800; }
 tbody tr.total-row td { border-top: 2px solid var(--green-100); }
 tfoot td {
-  padding: 10px 12px;
+  padding: 10px 9px;
   font-weight: 800;
   background: linear-gradient(180deg, #f3fbf6, #e9f7ef);
   border-top: 2px solid var(--green-100);
@@ -440,6 +445,28 @@ td.actions { text-align: right; }
    editing control \u2014 only the Delete button carries .readonly-hide */
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .row-actions .btn { flex: 0 0 auto; }
+
+/* A pencil sits inside the cell it edits, right beside the value, so the Actions
+   column stays narrow and the row does not stretch. It is deliberately quiet
+   until hovered \u2014 it should read as an affordance on the value, not as a button
+   competing with the data. */
+.cell-edit { display: flex; align-items: center; gap: 6px; }
+.cell-edit > * { min-width: 0; }
+.pencil {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  opacity: .5;
+  transition: opacity .14s, background .14s, border-color .14s;
+}
+.pencil:hover { opacity: 1; background: var(--orange-50); border-color: var(--orange-200); }
+.pencil:focus-visible { opacity: 1; outline: 2px solid var(--orange-400); outline-offset: 1px; }
 
 /* the little "optional" tag inside a form label */
 .field label .opt {

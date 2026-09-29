@@ -4,7 +4,7 @@
 window.BABYZ_DATA = {
   "meta": {
     "version": 1,
-    "updatedAt": "2026-09-28T18:58:21.768Z",
+    "updatedAt": "2026-09-29T07:56:19.509Z",
     "settings": {
       "costPerPizza": 80,
       "applyCostToSwiggy": false
@@ -1152,9 +1152,9 @@ window.BABYZ_DATA = {
       "date": "2026-09-19",
       "dateLabel": "46284",
       "item": "Bread",
-      "qty": 1,
+      "qty": 2,
       "rate": 50,
-      "amount": 50,
+      "amount": 100,
       "category": "purchase",
       "note": ""
     },
@@ -1199,6 +1199,28 @@ window.BABYZ_DATA = {
       "qty": 1,
       "rate": 40,
       "amount": 40,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mumdtz8h4mmc",
+      "date": "2026-09-28",
+      "dateLabel": "",
+      "item": "Bread",
+      "qty": 2,
+      "rate": 40,
+      "amount": 80,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mumdu6r6286t",
+      "date": "2026-09-28",
+      "dateLabel": "",
+      "item": "Bread",
+      "qty": 1,
+      "rate": 32,
+      "amount": 32,
       "category": "purchase",
       "note": ""
     }

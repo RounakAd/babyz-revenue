@@ -129,18 +129,28 @@ if needed).
 
 ## Editing a row (local only)
 
-Every table row carries its own actions in the **Actions** column. All of the editing
-buttons are hidden on the hosted site — they only appear when the page is open locally
-with the writer running.
+The **Actions** column keeps just two buttons — **🧾 Invoice** and **Delete**. Everything
+else that can be edited carries a small **✏️ pencil** sitting *inside the cell it changes*,
+right beside the value:
+
+| Pencil sits beside | Where | What it edits |
+|---|---|---|
+| **Order no.** | Swiggy orders | that order's `#XXXX` reference |
+| **Customer** | Swiggy + Offline orders | the customer's name on that order |
+| **Item** | Swiggy + Offline orders | adds, changes or removes the pizzas on that order |
 
 | Button | Where | What it does |
 |---|---|---|
 | **🧾 Invoice** | every table | previews the order as an invoice; reads only, so it works everywhere |
-| **✏️ Items** | Swiggy + Offline orders | adds, changes or removes the pizzas on that order |
-| **✏️ Order no.** | Swiggy orders | adds or changes that order's `#XXXX` reference |
-| **✏️ Customer** | Swiggy + Offline orders | renames the customer on that order |
-| **✏️ Edit** | Investments | changes **Qty**, **Rate** and **Amount** on that purchase |
+| **✏️** (Actions column) | Investments | changes **Qty**, **Rate** and **Amount** on that purchase |
 | **Delete** | every table | stages the row for deletion (see the workflow above) |
+
+The pencil is deliberately quiet until you hover it — it reads as an affordance on the
+value rather than a button competing with the data, and keeping it in the cell is what
+stops a row stretching across the screen.
+
+All of the editing controls are hidden on the hosted site — they only appear when the
+page is open locally with the writer running.
 
 Every editor saves the same way: the corrected row goes to the **main local file**, the
 **2nd local copy** and the **repo copy** in one go, then every table, total and chart
@@ -155,8 +165,8 @@ record a new one and when you correct an existing one.
   this order** block instead of a single item/price/qty row. Each line is a menu item, a
   price and a quantity; **➕ Add another pizza** adds a line and **✕** removes one. The
   running total under the block shows how many pizzas, how many units and what they come to.
-* **✏️ Items** on any order row opens the very same editor, pre-filled with that order's
-  pizzas — so you can add a forgotten pizza, fix a price or drop a line later.
+* The **✏️ pencil in the Item cell** of any order row opens the very same editor, pre-filled
+  with that order's pizzas — so you can add a forgotten pizza, fix a price or drop a line later.
 * Picking an item fills in the menu price; you can still type the exact amount charged.
 * Each pizza is stored as its own line (`lines: [{ item, qty, price }]`) on **one** row, so
   an order stays one order. The table's **Item** column lists them stacked, **Qty** is the
@@ -324,7 +334,7 @@ There are two ways to set it:
 | Where | How |
 |---|---|
 | **Add panel** | the **Order no.** field next to the date when recording an order |
-| **Existing row** | the **✏️ Order no.** button in the Actions column of any Swiggy order |
+| **Existing row** | the **✏️ pencil** beside the **Order no.** value in any Swiggy order row |
 
 Both do the same thing, and both are **optional** — leave the field blank and nothing
 changes. Anything that is not four digits is refused with a toast; in the row editor the
@@ -362,13 +372,18 @@ logo** (see *The invoice logo* under **Files**) over the typeset business name a
 and closes with the thank-you line and a **Code 39 barcode** of the reference, like the
 receipt it is modelled on.
 
+The footer's **Generated** date is the **order's own date**, not the day you happen to open
+or download the invoice — so a bill re-printed months later still reads as it did on the
+day. No clock time is shown: an order records a date but never a time, and printing today's
+time beside the order's date would be misleading.
+
 The Swiggy payout week is **not** printed on the invoice — it is a weekly settlement
 figure, not something that belongs on a single customer's bill. It stays where it is
 useful, in the Swiggy tab's payout week badge and the weekly payout table.
 
 **It is not an editing control.** The button reads the row it already has, writes nothing
 and needs no file access, so it stays available on the **hosted, read-only copy** — only
-*Delete* is hidden there. Nothing is fetched from a CDN either: the invoice is drawn
+*Delete* and the pencils are hidden there. Nothing is fetched from a CDN either: the invoice is drawn
 straight onto a `<canvas>` (at 2× for print), the PNG is that canvas, and the PDF is
 assembled byte by byte in `assets/app.js` (`pdfFromCanvas`) around the same JPEG. So it
 behaves identically on GitHub Pages, on `localhost` and on `file://`.
