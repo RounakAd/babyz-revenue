@@ -165,9 +165,9 @@
     return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000) + 1;
   }
 
-  function payoutWeekDays(startISO) {
+  function payoutWeekDays(startISO, endISO) {
     if (!startISO) return 0;
-    return daysBetween(startISO, payoutWeekEnd(startISO));
+    return daysBetween(startISO, endISO || payoutWeekEnd(startISO));
   }
 
   function payoutRange(p) {
@@ -2167,30 +2167,53 @@
     });
   }
 
-  /* ------------------------------------------------------------ payout week picker */
-  function updatePayoutEndPreview() {
-    var start = $('swpStart').value;
-    var box = $('swpEnd');
-    if (!start) {
-      box.textContent = 'Pick a start day';
-      box.className = 'computed muted';
+  /* ------------------------------------------------------------ payout week picker
+     The week ENDING is derived from the start day but is NOT locked to it: a payout
+     can cover a shorter or longer stretch than 7 days, so the field is an ordinary
+     date input the user may change. `data-auto` remembers the last value WE wrote,
+     which is how we tell "the user has not touched this" from "the user chose this":
+     changing the start day re-fills an untouched end (and only an untouched one), so
+     a deliberate custom end is never silently overwritten - the same shape as the
+     `amountTyped` flag on the investment editor. */
+  function updatePayoutEnd() {
+    var startInp = $('swpStart');
+    var endInp = $('swpEnd');
+    var note = $('swpEndInfo');
+    var start = startInp.value;
+
+    function setNote(text, bad) {
+      note.textContent = text;
+      note.className = 'field-note' + (bad ? ' bad' : '');
+    }
+
+    if (!start || start < WEEK_MIN_START) {
+      endInp.value = '';
+      endInp.dataset.auto = '';
+      endInp.removeAttribute('min');
+      setNote(start ? 'before 1 Sep' : '', !!start);
       return;
     }
-    if (start < WEEK_MIN_START) {
-      box.textContent = 'Before 1 Sep 2026 \u2014 not allowed';
-      box.className = 'computed bad';
-      return;
+
+    /* the default is the 7th day; 1 Sep 2026 is the one exception (the short first
+       week ends 5 Sep), which is baked into payoutWeekEnd() and must not change -
+       the whole 7-day grid is anchored off it */
+    var auto = payoutWeekEnd(start);
+    if (!endInp.value || endInp.value === endInp.dataset.auto) {
+      endInp.value = auto;
+      endInp.dataset.auto = auto;
     }
-    var end = payoutWeekEnd(start);
-    var days = payoutWeekDays(start);
-    box.textContent = dNice(end) + '  (' + days + ' day' + (days === 1 ? '' : 's') + ')';
-    box.className = 'computed' + (days === 7 ? '' : ' short');
+    endInp.min = start;              /* the picker will not offer a day before the start */
+
+    var end = endInp.value;
+    if (end < start) { setNote('ends before start', true); return; }
+    var days = daysBetween(start, end);
+    setNote(days + ' day' + (days === 1 ? '' : 's'), false);
   }
 
   function renderPayoutWeekPicker() {
     var inp = $('swpStart');
     inp.min = WEEK_MIN_START;
-    updatePayoutEndPreview();
+    updatePayoutEnd();
   }
 
   function renderSettings() {
@@ -3273,9 +3296,12 @@
       renderLinesEditor($('swLines'), 'swiggy', null);
     });
 
-    /* add: payout — start day from the calendar, end date derived, overlaps merged */
-    $('swpStart').addEventListener('change', updatePayoutEndPreview);
-    $('swpStart').addEventListener('input', updatePayoutEndPreview);
+    /* add: payout — start day from the calendar, week ending defaulted to the 7th
+       day but editable, overlaps merged */
+    $('swpStart').addEventListener('change', updatePayoutEnd);
+    $('swpStart').addEventListener('input', updatePayoutEnd);
+    $('swpEnd').addEventListener('change', updatePayoutEnd);
+    $('swpEnd').addEventListener('input', updatePayoutEnd);
 
     $('swpAddBtn').addEventListener('click', function () {
       if (!guardWrite()) return;
@@ -3286,7 +3312,11 @@
       if (start < WEEK_MIN_START) { toast('Weeks can only start on or after 1 Sep 2026.', 'err'); return; }
       if (isNaN(amount)) { toast('Enter the payout amount received.', 'err'); return; }
 
-      var newRange = { start: start, end: payoutWeekEnd(start) };
+      /* only the start day is required — a blank ending means the usual 7th day */
+      var end = $('swpEnd').value || payoutWeekEnd(start);
+      if (end < start) { toast('The week ending cannot be before the week start.', 'err'); return; }
+
+      var newRange = { start: start, end: end };
       var note = $('swpNote').value.trim();
       var received = $('swpReceived').value || '';
 
@@ -3336,8 +3366,9 @@
       }
 
       $('swpStart').value = '';
+      $('swpEnd').value = ''; $('swpEnd').dataset.auto = '';
       $('swpAmount').value = ''; $('swpNote').value = ''; $('swpReceived').value = '';
-      updatePayoutEndPreview();
+      updatePayoutEnd();
     });
 
     /* add: offline order \u2014 one row, as many pizzas as were actually ordered */

@@ -196,8 +196,10 @@ record a new one and when you correct an existing one.
 * The **Save figures** button stays disabled until all three fields hold a valid,
   non-negative number, so a typo can never reach the files.
 
-Swiggy weekly payouts are **not** editable — they have no customer, qty or rate to
-correct. Change those in the source data and re-import.
+Swiggy weekly payouts have **no row editor** — they have no customer, qty or rate to
+correct, so no pencil appears on those rows. To change a week that is already recorded,
+delete the row and add it again with the right dates: the *Week ending* on the add panel
+is editable, and the usual merge rules apply.
 
 ---
 
@@ -269,22 +271,32 @@ net position = money earned − total invested
 ### Swiggy payout weeks
 
 The payout week is **not hardcoded**. In the weekly payout add-panel you pick the
-**week start day** from a calendar and the **end day is derived automatically**:
+**week start day** from a calendar and the **week ending is filled in for you**:
 
 ```
-week end = start + 6 days        → a 7-day week
+week ending = start + 6 days        → a 7-day week
 ```
 
-One exception, because Swiggy's very first payout window was short:
+Start on a Monday and the ending lands on that week's Sunday. One exception, because
+Swiggy's very first payout window was short:
 
-| Start day you pick | Auto end day | Days |
+| Start day you pick | Default ending | Days |
 |---|---|---|
 | **1 Sep 2026** | 5 Sep 2026 | 5 |
 | any other day | start + 6 days | 7 |
 
-* Dates **before 1 Sep 2026 are disabled** in the calendar — the payout history starts there.
-* Picking a start day fills the read-only *Week ends (auto)* field instantly, so you always
-  see the window before you save.
+**The ending is editable.** A payout does not always cover exactly seven days, so the
+*Week ending* field is an ordinary date input, not a computed label:
+
+* Leave it alone and it tracks the start day, always showing the 7th day.
+* Change it and it **stays** changed — picking a different start day afterwards will not
+  overwrite a date you chose. Clearing the field puts it back on the 7th day.
+* The label shows the length the current pair actually means (`7 days`, `5 days`, `4 days`),
+  so a non-standard week is visible before you save.
+* The ending can never precede the start: the picker refuses earlier days, the label turns
+  red, and saving is blocked with *"The week ending cannot be before the week start."*
+* Dates **before 1 Sep 2026 are disabled** in the start calendar — the payout history
+  starts there.
 
 **Overlapping weeks merge.** If the range you pick touches or overlaps a week you already
 recorded, the two are **combined into a single row**: the payout amounts are summed and the
@@ -293,6 +305,14 @@ row covering **20 Sep → 28 Sep** with the payouts added together, flagged `mer
 later 10 Sep entry (10–16) absorbs both the 6–12 and 13–19 weeks into `6 Sep → 19 Sep`.
 Deleting a merged week removes the whole merged row, and **↩ Undo deletes** brings it back
 intact — same merge rules apply on both add and delete.
+
+The payout table's Window column prints the range **and its real length** (`6 Sept – 12 Sept
+2026 · 7d`, `5 Oct – 8 Oct 2026 · 4d`), and gross sales are measured over that same range, so
+a custom week is scored exactly as you defined it.
+
+**An existing payout row still cannot be edited** — the payouts table offers only Delete.
+Changing a week means deleting the row and adding it again. Payouts have no customer, qty or
+rate to edit, so there is no pencil on those rows.
 
 ### Where the weeks come from
 

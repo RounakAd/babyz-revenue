@@ -109,18 +109,18 @@
       </div>
     </div>
 
-    <div class="section-head swiggy"><h2>Weekly payouts &amp; deductions</h2><span class="sub">pick the start day of the week — the end date is worked out for you</span></div>
+    <div class="section-head swiggy"><h2>Weekly payouts &amp; deductions</h2><span class="sub">pick the start day — the week ending is filled in for you, and you can change it</span></div>
     <div class="add-panel readonly-hide" id="swPayoutAddPanel">
       <h4>➕ Add a weekly payout</h4>
       <div class="add-grid">
         <div class="field"><label for="swpStart">Week start day</label><input type="date" id="swpStart" min="2026-09-01"></div>
-        <div class="field"><label>Week ends (auto)</label><div class="computed" id="swpEnd">Pick a start day</div></div>
+        <div class="field"><label for="swpEnd">Week ending <span class="field-note" id="swpEndInfo"></span></label><input type="date" id="swpEnd"></div>
         <div class="field"><label for="swpAmount">Payout received (₹)</label><input type="number" id="swpAmount" min="0" step="0.01" placeholder="0.00"></div>
         <div class="field"><label for="swpReceived">Received on</label><input type="date" id="swpReceived"></div>
         <div class="field span2"><label for="swpNote">Note</label><input type="text" id="swpNote" placeholder="optional"></div>
         <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="swpAddBtn">Add payout</button></div>
       </div>
-      <div class="field" style="margin-top:8px"><span class="hintline">Weeks run from the start day you pick. Every week is 7 days — except the first one, <b>1–5 Sep 2026</b>, which is the short week. Dates before 1 Sep 2026 are disabled. If your range overlaps a week you already recorded, the two are <b>merged into a single payout</b>.</span></div>
+      <div class="field" style="margin-top:8px"><span class="hintline">The <b>week ending</b> is filled in as the 7th day — start on a Monday and it lands on that week's Sunday — but you can change it whenever a payout covered a shorter or longer stretch. Pick only the start day and the 7th day is used. The first week, <b>1–5 Sep 2026</b>, is the short one. Dates before 1 Sep 2026 are disabled. If your range overlaps a week you already recorded, the two are <b>merged into a single payout</b>.</span></div>
     </div>
     <div class="card tight">
       <div class="card-head"><h3>Weekly payouts</h3><span class="hint">deduction is calculated against the selling prices recorded for that week</span></div>
