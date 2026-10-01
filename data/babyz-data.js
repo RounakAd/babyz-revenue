@@ -4,7 +4,7 @@
 window.BABYZ_DATA = {
   "meta": {
     "version": 1,
-    "updatedAt": "2026-09-29T07:56:19.509Z",
+    "updatedAt": "2026-10-01T07:07:06.339Z",
     "settings": {
       "costPerPizza": 80,
       "applyCostToSwiggy": false
@@ -407,6 +407,26 @@ window.BABYZ_DATA = {
       ],
       "offer": true,
       "offerAmount": 50,
+      "note": ""
+    },
+    {
+      "item": "Chicken Pepperoni Pizza",
+      "sourceItem": "Chicken Pepperoni Pizza",
+      "category": "nonveg",
+      "qty": 1,
+      "id": "off_mup6ylem55pq",
+      "date": "2026-09-30",
+      "customer": "Cat Bari",
+      "rate": 180,
+      "lines": [
+        {
+          "item": "Chicken Pepperoni Pizza",
+          "qty": 1,
+          "price": 180
+        }
+      ],
+      "offer": false,
+      "offerAmount": 0,
       "note": ""
     }
   ],
