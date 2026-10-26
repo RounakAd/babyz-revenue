@@ -4,7 +4,7 @@
 window.BABYZ_DATA = {
   "meta": {
     "version": 1,
-    "updatedAt": "2026-10-01T07:07:06.339Z",
+    "updatedAt": "2026-10-26T18:09:25.052Z",
     "settings": {
       "costPerPizza": 80,
       "applyCostToSwiggy": false
@@ -428,6 +428,106 @@ window.BABYZ_DATA = {
       "offer": false,
       "offerAmount": 0,
       "note": ""
+    },
+    {
+      "item": "Chicken Sausage Pizza",
+      "sourceItem": "Chicken Sausage Pizza",
+      "category": "nonveg",
+      "qty": 3,
+      "id": "off_mvpjgm0qsig4",
+      "date": "2026-10-25",
+      "customer": "Crocodile",
+      "rate": 180,
+      "lines": [
+        {
+          "item": "Chicken Sausage Pizza",
+          "qty": 1,
+          "price": 180
+        },
+        {
+          "item": "Chicken Pepperoni Pizza",
+          "qty": 1,
+          "price": 180
+        },
+        {
+          "item": "Mexican Sausage Supreme",
+          "qty": 1,
+          "price": 190
+        }
+      ],
+      "offer": true,
+      "offerAmount": 50,
+      "note": ""
+    },
+    {
+      "item": "Margherita + Corn Cheese Combo",
+      "sourceItem": "Margherita + Corn Cheese Combo",
+      "category": "combo",
+      "qty": 4,
+      "id": "off_mvpjo8bkjxjg",
+      "date": "2026-10-15",
+      "customer": "Sharmila birthday party",
+      "rate": 255,
+      "lines": [
+        {
+          "item": "Margherita + Corn Cheese Combo",
+          "qty": 2,
+          "price": 255
+        },
+        {
+          "item": "Chicken Sausage + Chicken Pepperoni Combo",
+          "qty": 2,
+          "price": 325
+        }
+      ],
+      "offer": false,
+      "offerAmount": 0,
+      "note": ""
+    },
+    {
+      "item": "Chicken Sausage Pizza",
+      "sourceItem": "Chicken Sausage Pizza",
+      "category": "nonveg",
+      "qty": 10,
+      "id": "off_mvpkdtsainei",
+      "date": "2026-10-11",
+      "customer": "Vaishanavi Mela",
+      "rate": 180,
+      "lines": [
+        {
+          "item": "Chicken Sausage Pizza",
+          "qty": 1,
+          "price": 180
+        },
+        {
+          "item": "Chicken Sausage Pizza",
+          "qty": 3,
+          "price": 170
+        },
+        {
+          "item": "OG Margherita Pizza",
+          "qty": 2,
+          "price": 150
+        },
+        {
+          "item": "OG Margherita Pizza",
+          "qty": 1,
+          "price": 140
+        },
+        {
+          "item": "Mexican Sausage Supreme",
+          "qty": 2,
+          "price": 200
+        },
+        {
+          "item": "Mexican Sausage Supreme",
+          "qty": 1,
+          "price": 100
+        }
+      ],
+      "offer": false,
+      "offerAmount": 0,
+      "note": "Rates differ due to Vaishnavi Mela"
     }
   ],
   "swiggyOrders": [
@@ -552,6 +652,49 @@ window.BABYZ_DATA = {
       "sellingPrice": 219,
       "qty": 1,
       "note": ""
+    },
+    {
+      "item": "Chicken Sausage Pizza",
+      "sourceItem": "Chicken Sausage Pizza",
+      "category": "nonveg",
+      "qty": 1,
+      "id": "swg_mvpk2g29gcrl",
+      "date": "2026-10-09",
+      "orderNo": "2691",
+      "customer": "Random",
+      "sellingPrice": 239,
+      "lines": [
+        {
+          "item": "Chicken Sausage Pizza",
+          "qty": 1,
+          "price": 239
+        }
+      ],
+      "note": ""
+    },
+    {
+      "item": "Hot & Smoky Pizza Pair",
+      "sourceItem": "Hot & Smoky Pizza Pair",
+      "category": "combo",
+      "qty": 2,
+      "id": "swg_mvpk3xk5e2sz",
+      "date": "2026-10-26",
+      "orderNo": "1829",
+      "customer": "Random",
+      "sellingPrice": 339,
+      "lines": [
+        {
+          "item": "Hot & Smoky Pizza Pair",
+          "qty": 1,
+          "price": 339
+        },
+        {
+          "item": "Og Margherita Pizza",
+          "qty": 1,
+          "price": 199
+        }
+      ],
+      "note": ""
     }
   ],
   "swiggyPayouts": [
@@ -570,6 +713,22 @@ window.BABYZ_DATA = {
       "payout": 735.09,
       "receivedOn": "",
       "note": "Week 3 payout (from Sales sheet)"
+    },
+    {
+      "id": "pay_mvpjyy24vawu",
+      "weekStart": "2026-09-27",
+      "weekEnd": "2026-09-30",
+      "payout": 655.93,
+      "receivedOn": "2026-10-04",
+      "note": ""
+    },
+    {
+      "id": "pay_mvpk0dryhred",
+      "weekStart": "2026-10-04",
+      "weekEnd": "2026-10-10",
+      "payout": 90.3,
+      "receivedOn": "2026-10-14",
+      "note": ""
     }
   ],
   "investments": [
@@ -1241,6 +1400,72 @@ window.BABYZ_DATA = {
       "qty": 1,
       "rate": 32,
       "amount": 32,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkhsfbe3yv",
+      "date": "2026-10-26",
+      "dateLabel": "",
+      "item": "Mozarella",
+      "qty": 1,
+      "rate": 400,
+      "amount": 400,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkji1gpec1",
+      "date": "2026-10-26",
+      "dateLabel": "",
+      "item": "Box",
+      "qty": 20,
+      "rate": 4.5,
+      "amount": 90,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkk86lsvlk",
+      "date": "2026-10-26",
+      "dateLabel": "",
+      "item": "Cheese Dressing",
+      "qty": 1,
+      "rate": 150,
+      "amount": 150,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkkl8oy7y6",
+      "date": "2026-10-26",
+      "dateLabel": "",
+      "item": "Chilli Flakes Sachet",
+      "qty": 1,
+      "rate": 90,
+      "amount": 90,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkmbpudzoi",
+      "date": "2026-10-25",
+      "dateLabel": "",
+      "item": "Pizza Base",
+      "qty": 3,
+      "rate": 40,
+      "amount": 120,
+      "category": "purchase",
+      "note": ""
+    },
+    {
+      "id": "inv_mvpkmmnre13u",
+      "date": "2026-10-25",
+      "dateLabel": "",
+      "item": "Cheese",
+      "qty": 1,
+      "rate": 125,
+      "amount": 125,
       "category": "purchase",
       "note": ""
     }
